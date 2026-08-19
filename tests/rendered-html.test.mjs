@@ -29,6 +29,7 @@ test("server-renders the Echo Maze prototype", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(html, /<title>Echo Maze — Observable Agent Cooperation<\/title>/i);
   assert.match(html, /ECHO MAZE/);
   assert.match(html, /AGENT 01 · NAVIGATOR/);
@@ -37,6 +38,10 @@ test("server-renders the Echo Maze prototype", async () => {
   assert.match(html, /Walker 的 3×3 局部視野/);
   assert.match(html, /Event stream/);
   assert.match(html, /Step round/);
+  assert.match(text, /HIDDEN-START LOCALIZATION/);
+  const routeLength = Number(text.match(/optimal (\d+) steps/)?.[1]);
+  assert.ok(routeLength >= 24, `expected route length >= 24, received ${routeLength}`);
+  assert.doesNotMatch(text, /18% NOISE|ORACLE BASELINE/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton|codex-preview/);
 });
 
@@ -50,6 +55,8 @@ test("the product shell no longer depends on starter preview files", async () =>
   assert.match(page, /generateMaze/);
   assert.match(page, /describeWalker/);
   assert.match(page, /chooseInstruction/);
+  assert.match(page, /const MIN_ROUTE_LENGTH = 24/);
+  assert.match(page, /navigatorCandidates/);
   assert.match(layout, /Echo Maze/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });
