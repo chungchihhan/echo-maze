@@ -676,20 +676,32 @@ function App() {
 
       <section className="event-card">
         <div className="event-head">
-          <div><PanelLabel>SHARED MEMORY</PanelLabel><h2>Event stream</h2></div>
-          <span className="event-caption">The only thing both agents can build together</span>
+          <div><PanelLabel>EVENT STREAM</PanelLabel><h2>Shared conversation</h2></div>
+          <span className="event-caption">Their only shared context</span>
         </div>
         {game.logs.length === 0 ? (
-          <div className="empty-log"><span className="empty-log-mark">◎</span><span>Step the simulation to watch their shared memory take shape.</span></div>
+          <div className="empty-log"><span className="empty-log-mark">◎</span><span>Start the simulation to open the conversation.</span></div>
         ) : (
-          <div className="event-list">
-            {game.logs.map((entry) => (
-              <div className={`event-row event-${entry.actor}`} key={entry.id}>
-                <span className="event-turn">T{String(entry.turn).padStart(2, "0")}</span>
-                <span className="event-actor">{entry.label}</span>
-                <span className="event-text">{entry.text}</span>
-                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""}`}>{entry.result ? (entry.result === "blocked" ? "blocked" : "moved") : "message"}</span>
-              </div>
+          <div className="chat-stream" aria-live="polite">
+            {[...game.logs].reverse().map((entry) => (
+              entry.actor === "environment" ? (
+                <div className={`chat-system ${entry.result === "blocked" ? "is-blocked" : ""}`} key={entry.id}>
+                  <span className="chat-system-turn">T{String(entry.turn).padStart(2, "0")}</span>
+                  <span className="chat-system-icon" aria-hidden="true">↳</span>
+                  <span>{entry.text}</span>
+                </div>
+              ) : (
+                <article className={`chat-message chat-${entry.actor}`} key={entry.id}>
+                  <div className="chat-avatar" aria-hidden="true">{entry.actor === "navigator" ? "N" : "W"}</div>
+                  <div className="chat-content">
+                    <div className="chat-meta">
+                      <strong>{entry.actor === "navigator" ? "Navigator" : "Walker"}</strong>
+                      <span>T{String(entry.turn).padStart(2, "0")} · {entry.actor === "navigator" ? "instruction" : "local report"}</span>
+                    </div>
+                    <p>{entry.text}</p>
+                  </div>
+                </article>
+              )
             ))}
           </div>
         )}

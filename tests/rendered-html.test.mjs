@@ -36,7 +36,8 @@ test("server-renders the Echo Maze prototype", async () => {
   assert.match(html, /AGENT 02 · WALKER/);
   assert.match(html, /完整迷宮地圖/);
   assert.match(html, /Walker 的 3×3 局部視野/);
-  assert.match(html, /Event stream/);
+  assert.match(html, /EVENT STREAM/);
+  assert.match(html, /Shared conversation/);
   assert.match(html, /Walker report/);
   assert.match(html, /Navigator locates/);
   assert.match(text, /HIDDEN-START LOCALIZATION/);
