@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 const SIZE = 9;
+const MIN_ROUTE_LENGTH = 24;
 
 type DirectionKey = "up" | "right" | "down" | "left";
 type Point = { r: number; c: number };
@@ -23,19 +24,17 @@ type LogEntry = {
   report: string;
   instruction: string;
   action: string;
-  misread: boolean;
   result: MoveResult;
 };
 type GameState = {
   maze: Maze;
   position: Point;
-  navigatorBelief: Point;
+  navigatorCandidates: Point[];
   turn: number;
   collisions: number;
   status: GameStatus;
   lastReport: string;
   lastInstruction: string;
-  lastInstructionDirection: DirectionKey | null;
   lastAction: DirectionKey | null;
   lastResult: MoveResult | null;
   logs: LogEntry[];
@@ -116,9 +115,9 @@ function getNeighbor(point: Point, direction: DirectionKey): Point {
 
 function carveMaze(random: RandomSource = Math.random) {
   const cells = makeCells();
-  const start = { r: 0, c: 0 };
-  const visited = new Set([pointKey(start)]);
-  const stack = [start];
+  const carveOrigin = { r: 0, c: 0 };
+  const visited = new Set([pointKey(carveOrigin)]);
+  const stack = [carveOrigin];
 
   while (stack.length > 0) {
     const current = stack[stack.length - 1];
@@ -140,7 +139,7 @@ function carveMaze(random: RandomSource = Math.random) {
     stack.push(next);
   }
 
-  return { cells, start };
+  return cells;
 }
 
 function canMove(cells: Cell[][], point: Point, direction: DirectionKey) {
@@ -178,15 +177,28 @@ function shortestPath(cells: Cell[][], start: Point, goal: Point) {
 
 function generateMaze(random: RandomSource = Math.random, seedLabel?: string): Maze {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const { cells, start } = carveMaze(random);
-    const exit = { r: SIZE - 1, c: SIZE - 1 };
-    const route = shortestPath(cells, start, exit);
-    if (route.length > 1) {
+    const cells = carveMaze(random);
+    const start = {
+      r: Math.floor(random() * SIZE),
+      c: Math.floor(random() * SIZE),
+    };
+    const exits: Array<{ point: Point; routeLength: number }> = [];
+
+    for (let r = 0; r < SIZE; r += 1) {
+      for (let c = 0; c < SIZE; c += 1) {
+        const point = { r, c };
+        const routeLength = shortestPath(cells, start, point).length - 1;
+        if (routeLength >= MIN_ROUTE_LENGTH) exits.push({ point, routeLength });
+      }
+    }
+
+    if (exits.length > 0) {
+      const selectedExit = exits[Math.floor(random() * exits.length)];
       return {
         cells,
         start,
-        exit,
-        routeLength: route.length - 1,
+        exit: selectedExit.point,
+        routeLength: selectedExit.routeLength,
         seed: seedLabel ?? Math.floor(random() * 0xffffffff).toString(36).slice(0, 6).toUpperCase(),
       };
     }
@@ -219,7 +231,7 @@ function describeWalker(
     ? `剛才${DIRECTIONS.find((item) => item.key === lastAction)?.phrase ?? "移動"}${
         lastResult === "moved" ? "成功" : "撞牆"
       }`
-    : "我在起點附近";
+    : "我從未知位置開始";
 
   return `${actionText}；${open.length > 0 ? `${open.join("、")}可走` : "附近沒有開路"}，${
     blocked.length > 0 ? `${blocked.join("、")}是牆` : "四周都可走"
@@ -263,54 +275,84 @@ function reportMatchesCell(cells: Cell[][], point: Point, report: string) {
   );
 }
 
-function reconcileBelief(
-  maze: Maze,
-  belief: Point,
-  previousInstruction: DirectionKey | null,
-  previousResult: MoveResult | null,
-  report: string,
-) {
-  const predicted =
-    previousInstruction && previousResult === "moved" && canMove(maze.cells, belief, previousInstruction)
-      ? getNeighbor(belief, previousInstruction)
-      : belief;
-
-  if (reportMatchesCell(maze.cells, predicted, report)) return predicted;
-
-  const candidates: Point[] = [];
+function allMazePoints() {
+  const points: Point[] = [];
   for (let r = 0; r < SIZE; r += 1) {
     for (let c = 0; c < SIZE; c += 1) {
-      const point = { r, c };
-      if (reportMatchesCell(maze.cells, point, report)) candidates.push(point);
+      points.push({ r, c });
+    }
+  }
+  return points;
+}
+
+function locateCandidates(maze: Maze, candidates: Point[], report: string) {
+  const pool = candidates.length > 0 ? candidates : allMazePoints();
+  const matches = pool.filter((point) => reportMatchesCell(maze.cells, point, report));
+  if (matches.length > 0) return matches;
+  return allMazePoints().filter((point) => reportMatchesCell(maze.cells, point, report));
+}
+
+function cellSignature(cells: Cell[][], point: Point) {
+  return DIRECTIONS.map((direction) =>
+    canMove(cells, point, direction.key) ? direction.label : "牆",
+  ).join("|");
+}
+
+function predictCandidates(maze: Maze, candidates: Point[], direction: DirectionKey | null) {
+  if (!direction) return candidates;
+  const unique = new Map<string, Point>();
+  for (const candidate of candidates) {
+    const next = canMove(maze.cells, candidate, direction)
+      ? getNeighbor(candidate, direction)
+      : candidate;
+    unique.set(pointKey(next), next);
+  }
+  return [...unique.values()];
+}
+
+function chooseDiagnosticDirection(maze: Maze, candidates: Point[]) {
+  let bestDirection = DIRECTIONS[0].key;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const direction of DIRECTIONS) {
+    const buckets = new Map<string, number>();
+    let movable = 0;
+    for (const candidate of candidates) {
+      const canAdvance = canMove(maze.cells, candidate, direction.key);
+      const next = canAdvance ? getNeighbor(candidate, direction.key) : candidate;
+      const key = `${canAdvance ? "moved" : "blocked"}:${cellSignature(maze.cells, next)}`;
+      buckets.set(key, (buckets.get(key) ?? 0) + 1);
+      if (canAdvance) movable += 1;
+    }
+
+    const total = candidates.length || 1;
+    const entropy = [...buckets.values()].reduce((score, count) => {
+      const probability = count / total;
+      return score - probability * Math.log2(probability);
+    }, 0);
+    const score = entropy + (movable / total) * 0.08;
+    if (score > bestScore) {
+      bestScore = score;
+      bestDirection = direction.key;
     }
   }
 
-  return candidates.sort(
-    (a, b) =>
-      Math.abs(a.r - predicted.r) + Math.abs(a.c - predicted.c) -
-      (Math.abs(b.r - predicted.r) + Math.abs(b.c - predicted.c)),
-  )[0] ?? belief;
+  return bestDirection;
 }
 
-function chooseWalkerAction(
-  maze: Maze,
-  position: Point,
-  requested: DirectionKey | null,
-  challengeMode: boolean,
-) {
-  if (!requested || !challengeMode || Math.random() > 0.18) return requested;
-  const alternatives = DIRECTIONS.filter(
-    (direction) => direction.key !== requested && canMove(maze.cells, position, direction.key),
-  );
-  return alternatives.length > 0
-    ? alternatives[Math.floor(Math.random() * alternatives.length)].key
-    : requested;
-}
+function chooseInstruction(maze: Maze, candidates: Point[]) {
+  if (candidates.length !== 1) {
+    const direction = chooseDiagnosticDirection(maze, candidates);
+    const phrase = DIRECTIONS.find((item) => item.key === direction)?.phrase ?? "移動一步";
+    return {
+      direction,
+      message: `${phrase}，再回報周圍。`,
+    };
+  }
 
-function chooseInstruction(maze: Maze, belief: Point) {
-  const path = shortestPath(maze.cells, belief, maze.exit);
+  const path = shortestPath(maze.cells, candidates[0], maze.exit);
   const next = path[1];
-  const direction = next ? directionBetween(belief, next) : null;
+  const direction = next ? directionBetween(candidates[0], next) : null;
   if (!direction) return { direction: null, message: "你已經在出口附近了。" };
   const phrase = DIRECTIONS.find((item) => item.key === direction)?.phrase ?? "繼續走";
   return { direction, message: `${phrase}。` };
@@ -323,13 +365,12 @@ function makeInitialGame(stable = false): GameState {
   return {
     maze,
     position: maze.start,
-    navigatorBelief: maze.start,
+    navigatorCandidates: [],
     turn: 0,
     collisions: 0,
     status: "ready",
-    lastReport: "我在起點附近；等待第一個指引。",
-    lastInstruction: "先觀察你的局部環境。",
-    lastInstructionDirection: null,
+    lastReport: "我不知道自己在地圖上的位置；正在觀察周圍。",
+    lastInstruction: "描述你周圍哪些方向可以走。",
     lastAction: null,
     lastResult: null,
     logs: [],
@@ -359,29 +400,27 @@ function FullMaze({ game }: { game: GameState }) {
     <div className="maze-wrap" aria-label="完整迷宮地圖">
       <div className="maze-grid full-maze">
         {game.maze.cells.flat().map((cell) => {
-          const isStart = samePoint(cell, game.maze.start);
           const isExit = samePoint(cell, game.maze.exit);
           const isActual = samePoint(cell, game.position);
-          const isBelief = samePoint(cell, game.navigatorBelief);
+          const isCandidate = game.navigatorCandidates.some((candidate) => samePoint(cell, candidate));
           return (
             <div
-              className={`maze-cell ${isStart ? "cell-start" : ""} ${isExit ? "cell-exit" : ""} ${
+              className={`maze-cell ${isExit ? "cell-exit" : ""} ${
                 isActual ? "cell-actual" : ""
-              } ${isBelief ? "cell-belief" : ""}`}
+              } ${isCandidate ? "cell-candidate" : ""}`}
               key={pointKey(cell)}
               style={wallStyle(cell)}
             >
               {isExit ? <span className="exit-mark">E</span> : null}
-              {isStart ? <span className="start-mark">S</span> : null}
               {isActual ? <span className="walker-mark">W</span> : null}
-              {isBelief ? <span className="belief-mark" aria-label="Navigator 的位置推測" /> : null}
+              {isCandidate ? <span className="candidate-mark" aria-label="Navigator 的候選位置" /> : null}
             </div>
           );
         })}
       </div>
       <div className="map-legend">
-        <span><i className="legend-swatch swatch-actual" />Walker 真實位置</span>
-        <span><i className="legend-swatch swatch-belief" />Navigator 推測</span>
+        <span><i className="legend-swatch swatch-actual" />Walker 真實位置（觀察者）</span>
+        <span><i className="legend-swatch swatch-belief" />Navigator 候選位置</span>
         <span><i className="legend-swatch swatch-exit" />出口</span>
       </div>
     </div>
@@ -425,7 +464,6 @@ function WalkerView({ game }: { game: GameState }) {
 function App() {
   const [game, setGame] = useState<GameState>(() => makeInitialGame(true));
   const [autoRun, setAutoRun] = useState(false);
-  const [challengeMode, setChallengeMode] = useState(false);
 
   const step = useCallback(() => {
     setGame((current) => {
@@ -437,50 +475,43 @@ function App() {
         current.lastAction,
         current.lastResult,
       );
-      const reconciledBelief = reconcileBelief(
+      const locatedCandidates = locateCandidates(
         current.maze,
-        current.navigatorBelief,
-        current.lastInstructionDirection,
-        current.lastResult,
+        current.navigatorCandidates,
         report,
       );
-      const instruction = chooseInstruction(current.maze, reconciledBelief);
+      const instruction = chooseInstruction(current.maze, locatedCandidates);
       const direction = instruction.direction;
-      const action = chooseWalkerAction(current.maze, current.position, direction, challengeMode);
-      const nextPosition = action && canMove(current.maze.cells, current.position, action)
-        ? getNeighbor(current.position, action)
+      const nextPosition = direction && canMove(current.maze.cells, current.position, direction)
+        ? getNeighbor(current.position, direction)
         : current.position;
       const result: MoveResult = samePoint(nextPosition, current.position) ? "blocked" : "moved";
-      const nextBelief = direction && canMove(current.maze.cells, reconciledBelief, direction)
-        ? getNeighbor(reconciledBelief, direction)
-        : reconciledBelief;
+      const nextCandidates = predictCandidates(current.maze, locatedCandidates, direction);
       const nextTurn = current.turn + 1;
       const won = samePoint(nextPosition, current.maze.exit);
       const log: LogEntry = {
         turn: nextTurn,
         report,
         instruction: instruction.message,
-        action: action ? DIRECTIONS.find((item) => item.key === action)?.label ?? "—" : "—",
-        misread: action !== direction,
+        action: direction ? DIRECTIONS.find((item) => item.key === direction)?.label ?? "—" : "—",
         result,
       };
 
       return {
         ...current,
         position: nextPosition,
-        navigatorBelief: nextBelief,
+        navigatorCandidates: nextCandidates,
         turn: nextTurn,
         collisions: current.collisions + (result === "blocked" ? 1 : 0),
         status: won ? "won" : "running",
         lastReport: report,
         lastInstruction: instruction.message,
-        lastInstructionDirection: direction,
-        lastAction: action,
+        lastAction: direction,
         lastResult: result,
         logs: [log, ...current.logs].slice(0, 8),
       };
     });
-  }, [challengeMode]);
+  }, []);
 
   useEffect(() => {
     if (!autoRun || game.status === "won") return undefined;
@@ -493,14 +524,11 @@ function App() {
     setGame(makeInitialGame());
   }
 
-  function toggleChallengeMode() {
-    setAutoRun(false);
-    setChallengeMode((value) => !value);
-    setGame(makeInitialGame(true));
-  }
-
   const statusLabel = game.status === "won" ? "出口已找到" : game.status === "ready" ? "準備開始" : "模擬進行中";
   const statusTone = game.status === "won" ? "success" : game.status === "ready" ? "idle" : "live";
+  const locatedPosition = game.navigatorCandidates.length === 1
+    ? game.navigatorCandidates[0]
+    : null;
 
   return (
     <main className="echo-app">
@@ -513,7 +541,7 @@ function App() {
           </div>
         </div>
         <div className="top-actions">
-          <div className={`mode-pill ${challengeMode ? "challenge-pill" : ""}`}><span className="pulse-dot" />{challengeMode ? "CHALLENGE · 18% NOISE" : "ORACLE BASELINE"}</div>
+          <div className="mode-pill"><span className="pulse-dot" />HIDDEN-START LOCALIZATION</div>
           <button className="button button-quiet" onClick={newMaze}>New maze <span>↗</span></button>
         </div>
       </header>
@@ -525,17 +553,14 @@ function App() {
         </div>
         <div className="intro-note">
           <span className="note-line" />
-          <p>Navigator reads the whole maze.<br />Walker only sees what is nearby.</p>
+          <p>Navigator sees the maze, but not the start.<br />Walker must help it locate them first.</p>
         </div>
       </section>
 
       <section className="control-bar">
-        <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span></div>
+        <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span><span className="run-separator">/</span><span>optimal {game.maze.routeLength} steps</span></div>
         <div className="control-actions">
           <span className="turn-counter"><strong>{String(game.turn).padStart(2, "0")}</strong> turns</span>
-          <button className={`button button-mode ${challengeMode ? "is-challenge" : ""}`} onClick={toggleChallengeMode}>
-            {challengeMode ? "Oracle baseline" : "Challenge mode"}
-          </button>
           <button className="button button-step" onClick={step} disabled={game.status === "won"}>Step round <span>→</span></button>
           <button className={`button button-run ${autoRun ? "is-running" : ""}`} onClick={() => setAutoRun((value) => !value)} disabled={game.status === "won"}>
             <span className="play-icon">{autoRun ? "Ⅱ" : "▶"}</span>{autoRun ? "Pause" : "Auto-run"}
@@ -552,11 +577,11 @@ function App() {
             </div>
             <span className="visibility-tag">FULL MAP</span>
           </div>
-          <div className="map-heading"><span>Navigator view</span><span>Position is inferred, not given</span></div>
+          <div className="map-heading"><span>Navigator view + observer overlay</span><span>Orange Walker is hidden from Navigator</span></div>
           <FullMaze game={game} />
           <div className="belief-readout">
-            <div><span className="readout-label">NAVIGATOR BELIEF</span><strong>row {game.navigatorBelief.r + 1} · col {game.navigatorBelief.c + 1}</strong></div>
-            <div><span className="readout-label">ACTUAL WALKER</span><strong className={samePoint(game.position, game.navigatorBelief) ? "match" : "drift"}>row {game.position.r + 1} · col {game.position.c + 1}</strong></div>
+            <div><span className="readout-label">LOCATION HYPOTHESES</span><strong className={locatedPosition ? "match" : "drift"}>{locatedPosition ? `row ${locatedPosition.r + 1} · col ${locatedPosition.c + 1}` : game.navigatorCandidates.length > 0 ? `${game.navigatorCandidates.length} possible cells` : "unknown until first report"}</strong></div>
+            <div><span className="readout-label">ACTUAL WALKER · OBSERVER ONLY</span><strong>row {game.position.r + 1} · col {game.position.c + 1}</strong></div>
           </div>
           <div className="message-block">
             <div className="message-meta"><span>Navigator → Walker</span><span>one sentence</span></div>
@@ -601,7 +626,7 @@ function App() {
                 <span className="event-report">{entry.report}</span>
                 <span className="event-arrow">→</span>
                 <span className="event-instruction">{entry.instruction}</span>
-                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""} ${entry.misread ? "is-misread" : ""}`}>{entry.misread ? `偏離 → 實際${entry.action}` : entry.result === "blocked" ? "撞牆" : `移動 ${entry.action}`}</span>
+                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""}`}>{entry.result === "blocked" ? "撞牆" : `移動 ${entry.action}`}</span>
               </div>
             ))}
           </div>
@@ -610,7 +635,7 @@ function App() {
 
       <footer className="footer-note">
         <span>prototype 01</span>
-        <span>fixed shared start · random connected maze · no hidden position feed</span>
+        <span>random hidden start · random exit · minimum optimal route {MIN_ROUTE_LENGTH}</span>
         <span>echo / maze</span>
       </footer>
     </main>

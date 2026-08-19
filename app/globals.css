@@ -46,8 +46,6 @@ button { font: inherit; }
 .top-actions { gap: 12px; }
 .mode-pill, .visibility-tag { border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; padding: 9px 12px; }
 .mode-pill { display: flex; align-items: center; gap: 7px; }
-.challenge-pill { color: var(--orange); border-color: rgba(239,154,102,.3); }
-.challenge-pill .pulse-dot { background: var(--orange); box-shadow: 0 0 0 4px rgba(239,154,102,.09); }
 .pulse-dot, .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--aqua); box-shadow: 0 0 0 4px rgba(134,223,199,.09); }
 .button { border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; transition: .2s ease; }
 .button:disabled { cursor: not-allowed; opacity: .4; }
@@ -76,8 +74,6 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
 .button-step { background: rgba(134,223,199,.1); border-color: rgba(134,223,199,.3); }
 .button-run { background: transparent; }
 .button-run.is-running { color: var(--aqua); border-color: rgba(134,223,199,.5); }
-.button-mode { padding: 9px 12px; color: var(--muted); background: transparent; border-color: var(--line); font-size: 11px; }
-.button-mode:hover, .button-mode.is-challenge { color: var(--orange); border-color: rgba(239,154,102,.45); background: rgba(239,154,102,.07); }
 .play-icon { display: inline-block; width: 13px; margin-right: 6px; color: var(--aqua); }
 
 .agent-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr); gap: 18px; }
@@ -99,14 +95,12 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
 .full-maze { width: min(100%, 600px); aspect-ratio: 1; margin: 0 auto; }
 .maze-cell { position: relative; display: grid; place-items: center; min-width: 0; border-style: solid; border-width: 1px; border-color: transparent; background: rgba(23,38,34,.28); }
 .maze-cell::after { position: absolute; inset: 25%; content: ""; border-radius: 50%; background: rgba(134,223,199,.03); }
-.cell-start { background: rgba(134,223,199,.08); }
 .cell-exit { background: rgba(234,203,117,.12); }
-.exit-mark, .start-mark { position: absolute; z-index: 3; font-size: 8px; font-weight: 700; letter-spacing: .08em; }
+.exit-mark { position: absolute; z-index: 3; font-size: 8px; font-weight: 700; letter-spacing: .08em; }
 .exit-mark { color: var(--yellow); }
-.start-mark { top: 4px; left: 5px; color: var(--aqua-dim); font-size: 7px; }
 .walker-mark { position: relative; z-index: 4; display: grid; place-items: center; width: 18px; height: 18px; color: #1a1310; background: var(--orange); border-radius: 50%; font-size: 8px; font-weight: 800; box-shadow: 0 0 0 4px rgba(239,154,102,.14); }
-.belief-mark { position: absolute; z-index: 5; inset: 18%; border: 1px solid var(--aqua); border-radius: 50%; box-shadow: 0 0 14px rgba(134,223,199,.5); }
-.cell-actual.cell-belief .belief-mark { inset: 10%; border-style: dashed; opacity: .75; }
+.candidate-mark { position: absolute; z-index: 5; inset: 24%; border: 1px solid var(--aqua); border-radius: 50%; box-shadow: 0 0 12px rgba(134,223,199,.34); }
+.cell-actual.cell-candidate .candidate-mark { inset: 10%; border-style: dashed; opacity: .8; }
 .map-legend { justify-content: center; flex-wrap: wrap; gap: 16px; margin-top: 16px; color: var(--muted); font-size: 10px; }
 .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
@@ -154,7 +148,6 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
 .event-instruction { color: #c3d1cc; }
 .event-result { color: var(--aqua); text-align: right; font-size: 10px; }
 .event-result.is-blocked { color: var(--danger); }
-.event-result.is-misread { color: var(--orange); }
 .footer-note { justify-content: space-between; gap: 18px; padding: 20px 2px 0; color: var(--faint); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 
 @media (max-width: 980px) {
