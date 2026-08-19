@@ -23,6 +23,7 @@ type LogEntry = {
   report: string;
   instruction: string;
   action: string;
+  misread: boolean;
   result: MoveResult;
 };
 type GameState = {
@@ -34,6 +35,7 @@ type GameState = {
   status: GameStatus;
   lastReport: string;
   lastInstruction: string;
+  lastInstructionDirection: DirectionKey | null;
   lastAction: DirectionKey | null;
   lastResult: MoveResult | null;
   logs: LogEntry[];
@@ -224,6 +226,87 @@ function describeWalker(
   }。`;
 }
 
+function parseWalkerReport(report: string) {
+  const openMatch = report.match(/；([^，。]+)可走/);
+  const blockedMatch = report.match(/，([^。]+)是牆/);
+  const open = report.includes("附近沒有開路")
+    ? []
+    : report.includes("四周都可走")
+      ? DIRECTIONS.map((direction) => direction.key)
+      : DIRECTIONS.filter((direction) => openMatch?.[1].includes(direction.label)).map(
+          (direction) => direction.key,
+        );
+  const blocked = report.includes("四周都可走")
+    ? []
+    : DIRECTIONS.filter((direction) => blockedMatch?.[1].includes(direction.label)).map(
+        (direction) => direction.key,
+      );
+
+  return { open, blocked };
+}
+
+function reportMatchesCell(cells: Cell[][], point: Point, report: string) {
+  const parsed = parseWalkerReport(report);
+  const signature = {
+    open: DIRECTIONS.filter((direction) => canMove(cells, point, direction.key)).map(
+      (direction) => direction.key,
+    ),
+    blocked: DIRECTIONS.filter((direction) => !canMove(cells, point, direction.key)).map(
+      (direction) => direction.key,
+    ),
+  };
+  return (
+    signature.open.length === parsed.open.length &&
+    signature.blocked.length === parsed.blocked.length &&
+    parsed.open.every((direction) => signature.open.includes(direction)) &&
+    parsed.blocked.every((direction) => signature.blocked.includes(direction))
+  );
+}
+
+function reconcileBelief(
+  maze: Maze,
+  belief: Point,
+  previousInstruction: DirectionKey | null,
+  previousResult: MoveResult | null,
+  report: string,
+) {
+  const predicted =
+    previousInstruction && previousResult === "moved" && canMove(maze.cells, belief, previousInstruction)
+      ? getNeighbor(belief, previousInstruction)
+      : belief;
+
+  if (reportMatchesCell(maze.cells, predicted, report)) return predicted;
+
+  const candidates: Point[] = [];
+  for (let r = 0; r < SIZE; r += 1) {
+    for (let c = 0; c < SIZE; c += 1) {
+      const point = { r, c };
+      if (reportMatchesCell(maze.cells, point, report)) candidates.push(point);
+    }
+  }
+
+  return candidates.sort(
+    (a, b) =>
+      Math.abs(a.r - predicted.r) + Math.abs(a.c - predicted.c) -
+      (Math.abs(b.r - predicted.r) + Math.abs(b.c - predicted.c)),
+  )[0] ?? belief;
+}
+
+function chooseWalkerAction(
+  maze: Maze,
+  position: Point,
+  requested: DirectionKey | null,
+  challengeMode: boolean,
+) {
+  if (!requested || !challengeMode || Math.random() > 0.18) return requested;
+  const alternatives = DIRECTIONS.filter(
+    (direction) => direction.key !== requested && canMove(maze.cells, position, direction.key),
+  );
+  return alternatives.length > 0
+    ? alternatives[Math.floor(Math.random() * alternatives.length)].key
+    : requested;
+}
+
 function chooseInstruction(maze: Maze, belief: Point) {
   const path = shortestPath(maze.cells, belief, maze.exit);
   const next = path[1];
@@ -246,6 +329,7 @@ function makeInitialGame(stable = false): GameState {
     status: "ready",
     lastReport: "我在起點附近；等待第一個指引。",
     lastInstruction: "先觀察你的局部環境。",
+    lastInstructionDirection: null,
     lastAction: null,
     lastResult: null,
     logs: [],
@@ -341,6 +425,7 @@ function WalkerView({ game }: { game: GameState }) {
 function App() {
   const [game, setGame] = useState<GameState>(() => makeInitialGame(true));
   const [autoRun, setAutoRun] = useState(false);
+  const [challengeMode, setChallengeMode] = useState(false);
 
   const step = useCallback(() => {
     setGame((current) => {
@@ -352,22 +437,31 @@ function App() {
         current.lastAction,
         current.lastResult,
       );
-      const instruction = chooseInstruction(current.maze, current.navigatorBelief);
+      const reconciledBelief = reconcileBelief(
+        current.maze,
+        current.navigatorBelief,
+        current.lastInstructionDirection,
+        current.lastResult,
+        report,
+      );
+      const instruction = chooseInstruction(current.maze, reconciledBelief);
       const direction = instruction.direction;
-      const nextPosition = direction && canMove(current.maze.cells, current.position, direction)
-        ? getNeighbor(current.position, direction)
+      const action = chooseWalkerAction(current.maze, current.position, direction, challengeMode);
+      const nextPosition = action && canMove(current.maze.cells, current.position, action)
+        ? getNeighbor(current.position, action)
         : current.position;
       const result: MoveResult = samePoint(nextPosition, current.position) ? "blocked" : "moved";
-      const nextBelief = direction && canMove(current.maze.cells, current.navigatorBelief, direction)
-        ? getNeighbor(current.navigatorBelief, direction)
-        : current.navigatorBelief;
+      const nextBelief = direction && canMove(current.maze.cells, reconciledBelief, direction)
+        ? getNeighbor(reconciledBelief, direction)
+        : reconciledBelief;
       const nextTurn = current.turn + 1;
       const won = samePoint(nextPosition, current.maze.exit);
       const log: LogEntry = {
         turn: nextTurn,
         report,
         instruction: instruction.message,
-        action: direction ? DIRECTIONS.find((item) => item.key === direction)?.label ?? "—" : "—",
+        action: action ? DIRECTIONS.find((item) => item.key === action)?.label ?? "—" : "—",
+        misread: action !== direction,
         result,
       };
 
@@ -380,12 +474,13 @@ function App() {
         status: won ? "won" : "running",
         lastReport: report,
         lastInstruction: instruction.message,
-        lastAction: direction,
+        lastInstructionDirection: direction,
+        lastAction: action,
         lastResult: result,
         logs: [log, ...current.logs].slice(0, 8),
       };
     });
-  }, []);
+  }, [challengeMode]);
 
   useEffect(() => {
     if (!autoRun || game.status === "won") return undefined;
@@ -396,6 +491,12 @@ function App() {
   function newMaze() {
     setAutoRun(false);
     setGame(makeInitialGame());
+  }
+
+  function toggleChallengeMode() {
+    setAutoRun(false);
+    setChallengeMode((value) => !value);
+    setGame(makeInitialGame(true));
   }
 
   const statusLabel = game.status === "won" ? "出口已找到" : game.status === "ready" ? "準備開始" : "模擬進行中";
@@ -412,7 +513,7 @@ function App() {
           </div>
         </div>
         <div className="top-actions">
-          <div className="mode-pill"><span className="pulse-dot" />SIMULATION MODE</div>
+          <div className={`mode-pill ${challengeMode ? "challenge-pill" : ""}`}><span className="pulse-dot" />{challengeMode ? "CHALLENGE · 18% NOISE" : "ORACLE BASELINE"}</div>
           <button className="button button-quiet" onClick={newMaze}>New maze <span>↗</span></button>
         </div>
       </header>
@@ -432,6 +533,9 @@ function App() {
         <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span></div>
         <div className="control-actions">
           <span className="turn-counter"><strong>{String(game.turn).padStart(2, "0")}</strong> turns</span>
+          <button className={`button button-mode ${challengeMode ? "is-challenge" : ""}`} onClick={toggleChallengeMode}>
+            {challengeMode ? "Oracle baseline" : "Challenge mode"}
+          </button>
           <button className="button button-step" onClick={step} disabled={game.status === "won"}>Step round <span>→</span></button>
           <button className={`button button-run ${autoRun ? "is-running" : ""}`} onClick={() => setAutoRun((value) => !value)} disabled={game.status === "won"}>
             <span className="play-icon">{autoRun ? "Ⅱ" : "▶"}</span>{autoRun ? "Pause" : "Auto-run"}
@@ -497,7 +601,7 @@ function App() {
                 <span className="event-report">{entry.report}</span>
                 <span className="event-arrow">→</span>
                 <span className="event-instruction">{entry.instruction}</span>
-                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""}`}>{entry.result === "blocked" ? "撞牆" : `移動 ${entry.action}`}</span>
+                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""} ${entry.misread ? "is-misread" : ""}`}>{entry.misread ? `偏離 → 實際${entry.action}` : entry.result === "blocked" ? "撞牆" : `移動 ${entry.action}`}</span>
               </div>
             ))}
           </div>

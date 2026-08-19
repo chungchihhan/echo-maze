@@ -46,6 +46,8 @@ button { font: inherit; }
 .top-actions { gap: 12px; }
 .mode-pill, .visibility-tag { border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; padding: 9px 12px; }
 .mode-pill { display: flex; align-items: center; gap: 7px; }
+.challenge-pill { color: var(--orange); border-color: rgba(239,154,102,.3); }
+.challenge-pill .pulse-dot { background: var(--orange); box-shadow: 0 0 0 4px rgba(239,154,102,.09); }
 .pulse-dot, .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--aqua); box-shadow: 0 0 0 4px rgba(134,223,199,.09); }
 .button { border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; transition: .2s ease; }
 .button:disabled { cursor: not-allowed; opacity: .4; }
@@ -74,6 +76,8 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
 .button-step { background: rgba(134,223,199,.1); border-color: rgba(134,223,199,.3); }
 .button-run { background: transparent; }
 .button-run.is-running { color: var(--aqua); border-color: rgba(134,223,199,.5); }
+.button-mode { padding: 9px 12px; color: var(--muted); background: transparent; border-color: var(--line); font-size: 11px; }
+.button-mode:hover, .button-mode.is-challenge { color: var(--orange); border-color: rgba(239,154,102,.45); background: rgba(239,154,102,.07); }
 .play-icon { display: inline-block; width: 13px; margin-right: 6px; color: var(--aqua); }
 
 .agent-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr); gap: 18px; }
@@ -150,6 +154,7 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
 .event-instruction { color: #c3d1cc; }
 .event-result { color: var(--aqua); text-align: right; font-size: 10px; }
 .event-result.is-blocked { color: var(--danger); }
+.event-result.is-misread { color: var(--orange); }
 .footer-note { justify-content: space-between; gap: 18px; padding: 20px 2px 0; color: var(--faint); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 
 @media (max-width: 980px) {
