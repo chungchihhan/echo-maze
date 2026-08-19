@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 const SIZE = 9;
-const MIN_ROUTE = 16;
-const MAX_ROUTE = 22;
 
 type DirectionKey = "up" | "right" | "down" | "left";
 type Point = { r: number; c: number };
@@ -179,38 +177,14 @@ function shortestPath(cells: Cell[][], start: Point, goal: Point) {
 function generateMaze(random: RandomSource = Math.random, seedLabel?: string): Maze {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const { cells, start } = carveMaze(random);
-    const distances = shortestPath(cells, start, { r: SIZE - 1, c: SIZE - 1 });
-    const candidates: Point[] = [];
-
-    for (let r = 0; r < SIZE; r += 1) {
-      for (let c = 0; c < SIZE; c += 1) {
-        const path = shortestPath(cells, start, { r, c });
-        if (path.length - 1 >= MIN_ROUTE && path.length - 1 <= MAX_ROUTE) {
-          candidates.push({ r, c });
-        }
-      }
-    }
-
-    if (candidates.length > 0) {
-      const exit = candidates[Math.floor(random() * candidates.length)];
+    const exit = { r: SIZE - 1, c: SIZE - 1 };
+    const route = shortestPath(cells, start, exit);
+    if (route.length > 1) {
       return {
         cells,
         start,
         exit,
-        routeLength: shortestPath(cells, start, exit).length - 1,
-        seed: seedLabel ?? Math.floor(random() * 0xffffffff).toString(36).slice(0, 6).toUpperCase(),
-      };
-    }
-
-    // The call above keeps the generator robust if a future maze algorithm
-    // produces a different route distribution.
-    if (distances.length > 1) {
-      const exit = { r: SIZE - 1, c: SIZE - 1 };
-      return {
-        cells,
-        start,
-        exit,
-        routeLength: distances.length - 1,
+        routeLength: route.length - 1,
         seed: seedLabel ?? Math.floor(random() * 0xffffffff).toString(36).slice(0, 6).toUpperCase(),
       };
     }
