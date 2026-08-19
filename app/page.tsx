@@ -40,6 +40,7 @@ type GameState = {
   lastResult: MoveResult | null;
   logs: LogEntry[];
 };
+type RandomSource = () => number;
 
 const DIRECTIONS: Array<{
   key: DirectionKey;
@@ -69,10 +70,26 @@ function pointKey(point: Point) {
   return `${point.r},${point.c}`;
 }
 
-function shuffle<T>(items: T[]) {
+function seededRandom(seedText: string): RandomSource {
+  let state = 2166136261;
+  for (let index = 0; index < seedText.length; index += 1) {
+    state ^= seedText.charCodeAt(index);
+    state = Math.imul(state, 16777619);
+  }
+
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle<T>(items: T[], random: RandomSource = Math.random) {
   const result = [...items];
   for (let index = result.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const swapIndex = Math.floor(random() * (index + 1));
     [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
   }
   return result;
@@ -97,7 +114,7 @@ function getNeighbor(point: Point, direction: DirectionKey): Point {
   return { r: point.r + (vector?.dr ?? 0), c: point.c + (vector?.dc ?? 0) };
 }
 
-function carveMaze() {
+function carveMaze(random: RandomSource = Math.random) {
   const cells = makeCells();
   const start = { r: 0, c: 0 };
   const visited = new Set([pointKey(start)]);
@@ -105,7 +122,7 @@ function carveMaze() {
 
   while (stack.length > 0) {
     const current = stack[stack.length - 1];
-    const options = shuffle(DIRECTIONS).filter((direction) => {
+    const options = shuffle(DIRECTIONS, random).filter((direction) => {
       const neighbor = getNeighbor(current, direction.key);
       return inBounds(neighbor) && !visited.has(pointKey(neighbor));
     });
@@ -159,9 +176,9 @@ function shortestPath(cells: Cell[][], start: Point, goal: Point) {
   return path;
 }
 
-function generateMaze(): Maze {
+function generateMaze(random: RandomSource = Math.random, seedLabel?: string): Maze {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const { cells, start } = carveMaze();
+    const { cells, start } = carveMaze(random);
     const distances = shortestPath(cells, start, { r: SIZE - 1, c: SIZE - 1 });
     const candidates: Point[] = [];
 
@@ -175,13 +192,13 @@ function generateMaze(): Maze {
     }
 
     if (candidates.length > 0) {
-      const exit = candidates[Math.floor(Math.random() * candidates.length)];
+      const exit = candidates[Math.floor(random() * candidates.length)];
       return {
         cells,
         start,
         exit,
         routeLength: shortestPath(cells, start, exit).length - 1,
-        seed: Math.random().toString(36).slice(2, 8).toUpperCase(),
+        seed: seedLabel ?? Math.floor(random() * 0xffffffff).toString(36).slice(0, 6).toUpperCase(),
       };
     }
 
@@ -194,7 +211,7 @@ function generateMaze(): Maze {
         start,
         exit,
         routeLength: distances.length - 1,
-        seed: Math.random().toString(36).slice(2, 8).toUpperCase(),
+        seed: seedLabel ?? Math.floor(random() * 0xffffffff).toString(36).slice(0, 6).toUpperCase(),
       };
     }
   }
@@ -242,8 +259,10 @@ function chooseInstruction(maze: Maze, belief: Point) {
   return { direction, message: `${phrase}。` };
 }
 
-function makeInitialGame(): GameState {
-  const maze = generateMaze();
+function makeInitialGame(stable = false): GameState {
+  const maze = stable
+    ? generateMaze(seededRandom("ECHO-MAZE-DEMO"), "DEMO01")
+    : generateMaze();
   return {
     maze,
     position: maze.start,
@@ -346,7 +365,7 @@ function WalkerView({ game }: { game: GameState }) {
 }
 
 function App() {
-  const [game, setGame] = useState<GameState>(() => makeInitialGame());
+  const [game, setGame] = useState<GameState>(() => makeInitialGame(true));
   const [autoRun, setAutoRun] = useState(false);
 
   const step = useCallback(() => {
