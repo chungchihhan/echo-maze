@@ -37,11 +37,13 @@ test("server-renders the Echo Maze prototype", async () => {
   assert.match(html, /完整迷宮地圖/);
   assert.match(html, /Walker 的 3×3 局部視野/);
   assert.match(html, /Event stream/);
-  assert.match(html, /Step round/);
+  assert.match(html, /Walker report/);
+  assert.match(html, /Navigator locates/);
   assert.match(text, /HIDDEN-START LOCALIZATION/);
   const routeLength = Number(text.match(/optimal (\d+) steps/)?.[1]);
   assert.ok(routeLength >= 24, `expected route length >= 24, received ${routeLength}`);
   assert.doesNotMatch(text, /18% NOISE|ORACLE BASELINE/);
+  assert.doesNotMatch(text, /ACTUAL WALKER|Walker 真實位置|observer overlay/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton|codex-preview/);
 });
 
@@ -57,6 +59,8 @@ test("the product shell no longer depends on starter preview files", async () =>
   assert.match(page, /chooseInstruction/);
   assert.match(page, /const MIN_ROUTE_LENGTH = 24/);
   assert.match(page, /navigatorCandidates/);
+  assert.match(page, /type GamePhase = "walker_report" \| "navigator_reply" \| "walker_move"/);
+  assert.match(page, /Navigator only receives the full maze, its prior hypotheses, and Walker's report/);
   assert.match(layout, /Echo Maze/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });
