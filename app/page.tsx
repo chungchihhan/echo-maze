@@ -19,17 +19,22 @@ type Maze = {
 };
 type MoveResult = "moved" | "blocked";
 type GameStatus = "ready" | "running" | "won";
+type GamePhase = "walker_report" | "navigator_reply" | "walker_move";
+type TimelineActor = "walker" | "navigator" | "environment";
 type LogEntry = {
+  id: string;
   turn: number;
-  report: string;
-  instruction: string;
-  action: string;
-  result: MoveResult;
+  actor: TimelineActor;
+  label: string;
+  text: string;
+  result?: MoveResult;
 };
 type GameState = {
   maze: Maze;
   position: Point;
   navigatorCandidates: Point[];
+  phase: GamePhase;
+  pendingDirection: DirectionKey | null;
   turn: number;
   collisions: number;
   status: GameStatus;
@@ -366,6 +371,8 @@ function makeInitialGame(stable = false): GameState {
     maze,
     position: maze.start,
     navigatorCandidates: [],
+    phase: "walker_report",
+    pendingDirection: null,
     turn: 0,
     collisions: 0,
     status: "ready",
@@ -395,31 +402,26 @@ function PanelLabel({ children }: { children: ReactNode }) {
   return <span className="panel-label">{children}</span>;
 }
 
-function FullMaze({ game }: { game: GameState }) {
+function FullMaze({ maze, candidates }: { maze: Maze; candidates: Point[] }) {
   return (
     <div className="maze-wrap" aria-label="完整迷宮地圖">
       <div className="maze-grid full-maze">
-        {game.maze.cells.flat().map((cell) => {
-          const isExit = samePoint(cell, game.maze.exit);
-          const isActual = samePoint(cell, game.position);
-          const isCandidate = game.navigatorCandidates.some((candidate) => samePoint(cell, candidate));
+        {maze.cells.flat().map((cell) => {
+          const isExit = samePoint(cell, maze.exit);
+          const isCandidate = candidates.some((candidate) => samePoint(cell, candidate));
           return (
             <div
-              className={`maze-cell ${isExit ? "cell-exit" : ""} ${
-                isActual ? "cell-actual" : ""
-              } ${isCandidate ? "cell-candidate" : ""}`}
+              className={`maze-cell ${isExit ? "cell-exit" : ""} ${isCandidate ? "cell-candidate" : ""}`}
               key={pointKey(cell)}
               style={wallStyle(cell)}
             >
               {isExit ? <span className="exit-mark">E</span> : null}
-              {isActual ? <span className="walker-mark">W</span> : null}
               {isCandidate ? <span className="candidate-mark" aria-label="Navigator 的候選位置" /> : null}
             </div>
           );
         })}
       </div>
       <div className="map-legend">
-        <span><i className="legend-swatch swatch-actual" />Walker 真實位置（觀察者）</span>
         <span><i className="legend-swatch swatch-belief" />Navigator 候選位置</span>
         <span><i className="legend-swatch swatch-exit" />出口</span>
       </div>
@@ -469,31 +471,73 @@ function App() {
     setGame((current) => {
       if (current.status === "won") return current;
 
-      const report = describeWalker(
-        current.maze,
-        current.position,
-        current.lastAction,
-        current.lastResult,
-      );
-      const locatedCandidates = locateCandidates(
-        current.maze,
-        current.navigatorCandidates,
-        report,
-      );
-      const instruction = chooseInstruction(current.maze, locatedCandidates);
-      const direction = instruction.direction;
+      const activeTurn = current.turn + 1;
+
+      if (current.phase === "walker_report") {
+        const report = describeWalker(
+          current.maze,
+          current.position,
+          current.lastAction,
+          current.lastResult,
+        );
+        const log: LogEntry = {
+          id: `${activeTurn}-walker`,
+          turn: activeTurn,
+          actor: "walker",
+          label: "Walker reports",
+          text: report,
+        };
+        return {
+          ...current,
+          phase: "navigator_reply",
+          status: "running",
+          lastReport: report,
+          logs: [log, ...current.logs].slice(0, 18),
+        };
+      }
+
+      if (current.phase === "navigator_reply") {
+        // Navigator only receives the full maze, its prior hypotheses, and Walker's report.
+        const locatedCandidates = locateCandidates(
+          current.maze,
+          current.navigatorCandidates,
+          current.lastReport,
+        );
+        const instruction = chooseInstruction(current.maze, locatedCandidates);
+        const log: LogEntry = {
+          id: `${activeTurn}-navigator`,
+          turn: activeTurn,
+          actor: "navigator",
+          label: "Navigator replies",
+          text: instruction.message,
+        };
+        return {
+          ...current,
+          phase: "walker_move",
+          navigatorCandidates: locatedCandidates,
+          pendingDirection: instruction.direction,
+          lastInstruction: instruction.message,
+          logs: [log, ...current.logs].slice(0, 18),
+        };
+      }
+
+      // The environment applies Navigator's command to the hidden true position.
+      const direction = current.pendingDirection;
       const nextPosition = direction && canMove(current.maze.cells, current.position, direction)
         ? getNeighbor(current.position, direction)
         : current.position;
       const result: MoveResult = samePoint(nextPosition, current.position) ? "blocked" : "moved";
-      const nextCandidates = predictCandidates(current.maze, locatedCandidates, direction);
-      const nextTurn = current.turn + 1;
+      const nextCandidates = predictCandidates(current.maze, current.navigatorCandidates, direction);
       const won = samePoint(nextPosition, current.maze.exit);
+      const action = direction
+        ? DIRECTIONS.find((item) => item.key === direction)?.label ?? "—"
+        : "—";
       const log: LogEntry = {
-        turn: nextTurn,
-        report,
-        instruction: instruction.message,
-        action: direction ? DIRECTIONS.find((item) => item.key === direction)?.label ?? "—" : "—",
+        id: `${activeTurn}-environment`,
+        turn: activeTurn,
+        actor: "environment",
+        label: "Walker acts",
+        text: result === "blocked" ? `${action}方是牆，Walker 留在原地。` : `Walker 向${action}移動一格。`,
         result,
       };
 
@@ -501,14 +545,14 @@ function App() {
         ...current,
         position: nextPosition,
         navigatorCandidates: nextCandidates,
-        turn: nextTurn,
+        phase: "walker_report",
+        pendingDirection: null,
+        turn: activeTurn,
         collisions: current.collisions + (result === "blocked" ? 1 : 0),
         status: won ? "won" : "running",
-        lastReport: report,
-        lastInstruction: instruction.message,
         lastAction: direction,
         lastResult: result,
-        logs: [log, ...current.logs].slice(0, 8),
+        logs: [log, ...current.logs].slice(0, 18),
       };
     });
   }, []);
@@ -529,6 +573,16 @@ function App() {
   const locatedPosition = game.navigatorCandidates.length === 1
     ? game.navigatorCandidates[0]
     : null;
+  const stepLabel = game.phase === "walker_report"
+    ? "Walker report"
+    : game.phase === "navigator_reply"
+      ? "Navigator respond"
+      : "Walker move";
+  const navigationState = game.navigatorCandidates.length === 0
+    ? "waiting for first report"
+    : locatedPosition
+      ? "location fixed · routing"
+      : "narrowing location";
 
   return (
     <main className="echo-app">
@@ -558,10 +612,19 @@ function App() {
       </section>
 
       <section className="control-bar">
-        <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span><span className="run-separator">/</span><span>optimal {game.maze.routeLength} steps</span></div>
+        <div className="control-info">
+          <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span><span className="run-separator">/</span><span>optimal {game.maze.routeLength} steps</span></div>
+          <div className="phase-track" aria-label="回合的三個階段">
+            <span className={game.phase === "walker_report" ? "is-active" : ""}>1 · Walker reports</span>
+            <i>→</i>
+            <span className={game.phase === "navigator_reply" ? "is-active" : ""}>2 · Navigator locates</span>
+            <i>→</i>
+            <span className={game.phase === "walker_move" ? "is-active" : ""}>3 · Walker moves</span>
+          </div>
+        </div>
         <div className="control-actions">
           <span className="turn-counter"><strong>{String(game.turn).padStart(2, "0")}</strong> turns</span>
-          <button className="button button-step" onClick={step} disabled={game.status === "won"}>Step round <span>→</span></button>
+          <button className="button button-step" onClick={step} disabled={game.status === "won"}>{stepLabel} <span>→</span></button>
           <button className={`button button-run ${autoRun ? "is-running" : ""}`} onClick={() => setAutoRun((value) => !value)} disabled={game.status === "won"}>
             <span className="play-icon">{autoRun ? "Ⅱ" : "▶"}</span>{autoRun ? "Pause" : "Auto-run"}
           </button>
@@ -577,11 +640,11 @@ function App() {
             </div>
             <span className="visibility-tag">FULL MAP</span>
           </div>
-          <div className="map-heading"><span>Navigator view + observer overlay</span><span>Orange Walker is hidden from Navigator</span></div>
-          <FullMaze game={game} />
+          <div className="map-heading"><span>Navigator view</span><span>Start and live position are hidden</span></div>
+          <FullMaze maze={game.maze} candidates={game.navigatorCandidates} />
           <div className="belief-readout">
             <div><span className="readout-label">LOCATION HYPOTHESES</span><strong className={locatedPosition ? "match" : "drift"}>{locatedPosition ? `row ${locatedPosition.r + 1} · col ${locatedPosition.c + 1}` : game.navigatorCandidates.length > 0 ? `${game.navigatorCandidates.length} possible cells` : "unknown until first report"}</strong></div>
-            <div><span className="readout-label">ACTUAL WALKER · OBSERVER ONLY</span><strong>row {game.position.r + 1} · col {game.position.c + 1}</strong></div>
+            <div><span className="readout-label">NAVIGATION STATE</span><strong>{navigationState}</strong></div>
           </div>
           <div className="message-block">
             <div className="message-meta"><span>Navigator → Walker</span><span>one sentence</span></div>
@@ -621,12 +684,11 @@ function App() {
         ) : (
           <div className="event-list">
             {game.logs.map((entry) => (
-              <div className="event-row" key={`${entry.turn}-${entry.action}`}>
+              <div className={`event-row event-${entry.actor}`} key={entry.id}>
                 <span className="event-turn">T{String(entry.turn).padStart(2, "0")}</span>
-                <span className="event-report">{entry.report}</span>
-                <span className="event-arrow">→</span>
-                <span className="event-instruction">{entry.instruction}</span>
-                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""}`}>{entry.result === "blocked" ? "撞牆" : `移動 ${entry.action}`}</span>
+                <span className="event-actor">{entry.label}</span>
+                <span className="event-text">{entry.text}</span>
+                <span className={`event-result ${entry.result === "blocked" ? "is-blocked" : ""}`}>{entry.result ? (entry.result === "blocked" ? "blocked" : "moved") : "message"}</span>
               </div>
             ))}
           </div>
@@ -635,7 +697,7 @@ function App() {
 
       <footer className="footer-note">
         <span>prototype 01</span>
-        <span>random hidden start · random exit · minimum optimal route {MIN_ROUTE_LENGTH}</span>
+        <span>hidden state · report → infer → move · minimum optimal route {MIN_ROUTE_LENGTH}</span>
         <span>echo / maze</span>
       </footer>
     </main>
