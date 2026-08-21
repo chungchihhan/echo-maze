@@ -44,6 +44,18 @@ type GameState = {
   lastResult: MoveResult | null;
   logs: LogEntry[];
 };
+type WalkerAgentResponse = {
+  role: "walker";
+  model: "gpt-5.6-luna";
+  report: string;
+};
+type NavigatorAgentResponse = {
+  role: "navigator";
+  model: "gpt-5.6-luna";
+  message: string;
+  direction: DirectionKey;
+  candidates: Point[];
+};
 type RandomSource = () => number;
 
 const DIRECTIONS: Array<{
@@ -212,97 +224,6 @@ function generateMaze(random: RandomSource = Math.random, seedLabel?: string): M
   throw new Error("Could not generate a connected maze.");
 }
 
-function directionBetween(from: Point, to: Point): DirectionKey | null {
-  const delta = { r: to.r - from.r, c: to.c - from.c };
-  return (
-    DIRECTIONS.find((direction) => direction.dr === delta.r && direction.dc === delta.c)
-      ?.key ?? null
-  );
-}
-
-function describeWalker(
-  maze: Maze,
-  position: Point,
-  lastAction: DirectionKey | null,
-  lastResult: MoveResult | null,
-) {
-  const open = DIRECTIONS.filter((direction) => canMove(maze.cells, position, direction.key)).map(
-    (direction) => direction.label,
-  );
-  const blocked = DIRECTIONS.filter(
-    (direction) => !canMove(maze.cells, position, direction.key),
-  ).map((direction) => direction.label);
-  const actionText = lastAction
-    ? `剛才${DIRECTIONS.find((item) => item.key === lastAction)?.phrase ?? "移動"}${
-        lastResult === "moved" ? "成功" : "撞牆"
-      }`
-    : "我從未知位置開始";
-
-  return `${actionText}；${open.length > 0 ? `${open.join("、")}可走` : "附近沒有開路"}，${
-    blocked.length > 0 ? `${blocked.join("、")}是牆` : "四周都可走"
-  }。`;
-}
-
-function parseWalkerReport(report: string) {
-  const openMatch = report.match(/；([^，。]+)可走/);
-  const blockedMatch = report.match(/，([^。]+)是牆/);
-  const open = report.includes("附近沒有開路")
-    ? []
-    : report.includes("四周都可走")
-      ? DIRECTIONS.map((direction) => direction.key)
-      : DIRECTIONS.filter((direction) => openMatch?.[1].includes(direction.label)).map(
-          (direction) => direction.key,
-        );
-  const blocked = report.includes("四周都可走")
-    ? []
-    : DIRECTIONS.filter((direction) => blockedMatch?.[1].includes(direction.label)).map(
-        (direction) => direction.key,
-      );
-
-  return { open, blocked };
-}
-
-function reportMatchesCell(cells: Cell[][], point: Point, report: string) {
-  const parsed = parseWalkerReport(report);
-  const signature = {
-    open: DIRECTIONS.filter((direction) => canMove(cells, point, direction.key)).map(
-      (direction) => direction.key,
-    ),
-    blocked: DIRECTIONS.filter((direction) => !canMove(cells, point, direction.key)).map(
-      (direction) => direction.key,
-    ),
-  };
-  return (
-    signature.open.length === parsed.open.length &&
-    signature.blocked.length === parsed.blocked.length &&
-    parsed.open.every((direction) => signature.open.includes(direction)) &&
-    parsed.blocked.every((direction) => signature.blocked.includes(direction))
-  );
-}
-
-function allMazePoints() {
-  const points: Point[] = [];
-  for (let r = 0; r < SIZE; r += 1) {
-    for (let c = 0; c < SIZE; c += 1) {
-      points.push({ r, c });
-    }
-  }
-  return points;
-}
-
-function locateCandidates(maze: Maze, candidates: Point[], report: string) {
-  const pool = candidates.length > 0 ? candidates : allMazePoints();
-  const matches = pool.filter((point) => reportMatchesCell(maze.cells, point, report));
-  if (matches.length > 0) return matches;
-  return allMazePoints().filter((point) => reportMatchesCell(maze.cells, point, report));
-}
-
-function cellSignature(cells: Cell[][], point: Point) {
-  return DIRECTIONS.map((direction) =>
-    canMove(cells, point, direction.key) ? direction.label : "牆",
-  ).join("|");
-}
-
 function predictCandidates(maze: Maze, candidates: Point[], direction: DirectionKey | null) {
   if (!direction) return candidates;
   const unique = new Map<string, Point>();
@@ -315,52 +236,58 @@ function predictCandidates(maze: Maze, candidates: Point[], direction: Direction
   return [...unique.values()];
 }
 
-function chooseDiagnosticDirection(maze: Maze, candidates: Point[]) {
-  let bestDirection = DIRECTIONS[0].key;
-  let bestScore = Number.NEGATIVE_INFINITY;
+function walkerObservation(game: GameState) {
+  const openDirections = DIRECTIONS.filter((direction) =>
+    canMove(game.maze.cells, game.position, direction.key),
+  ).map((direction) => direction.key);
+  const blockedDirections = DIRECTIONS.filter(
+    (direction) => !canMove(game.maze.cells, game.position, direction.key),
+  ).map((direction) => direction.key);
+  const exitVisible = Math.abs(game.position.r - game.maze.exit.r) <= 1
+    && Math.abs(game.position.c - game.maze.exit.c) <= 1;
 
-  for (const direction of DIRECTIONS) {
-    const buckets = new Map<string, number>();
-    let movable = 0;
-    for (const candidate of candidates) {
-      const canAdvance = canMove(maze.cells, candidate, direction.key);
-      const next = canAdvance ? getNeighbor(candidate, direction.key) : candidate;
-      const key = `${canAdvance ? "moved" : "blocked"}:${cellSignature(maze.cells, next)}`;
-      buckets.set(key, (buckets.get(key) ?? 0) + 1);
-      if (canAdvance) movable += 1;
-    }
-
-    const total = candidates.length || 1;
-    const entropy = [...buckets.values()].reduce((score, count) => {
-      const probability = count / total;
-      return score - probability * Math.log2(probability);
-    }, 0);
-    const score = entropy + (movable / total) * 0.08;
-    if (score > bestScore) {
-      bestScore = score;
-      bestDirection = direction.key;
-    }
-  }
-
-  return bestDirection;
+  return {
+    openDirections,
+    blockedDirections,
+    exitVisible,
+    lastAction: game.lastAction,
+    lastResult: game.lastResult,
+    navigatorInstruction: game.lastInstruction,
+  };
 }
 
-function chooseInstruction(maze: Maze, candidates: Point[]) {
-  if (candidates.length !== 1) {
-    const direction = chooseDiagnosticDirection(maze, candidates);
-    const phrase = DIRECTIONS.find((item) => item.key === direction)?.phrase ?? "移動一步";
-    return {
-      direction,
-      message: `${phrase}，再回報周圍。`,
-    };
-  }
+function navigatorMaze(maze: Maze) {
+  return {
+    size: SIZE,
+    exit: maze.exit,
+    cells: maze.cells.flat().map((cell) => ({
+      r: cell.r,
+      c: cell.c,
+      open: DIRECTIONS.filter((direction) => !cell.walls[direction.key]).map(
+        (direction) => direction.key,
+      ),
+    })),
+  };
+}
 
-  const path = shortestPath(maze.cells, candidates[0], maze.exit);
-  const next = path[1];
-  const direction = next ? directionBetween(candidates[0], next) : null;
-  if (!direction) return { direction: null, message: "你已經在出口附近了。" };
-  const phrase = DIRECTIONS.find((item) => item.key === direction)?.phrase ?? "繼續走";
-  return { direction, message: `${phrase}。` };
+function sharedConversation(logs: LogEntry[]) {
+  return [...logs]
+    .reverse()
+    .filter((entry): entry is LogEntry & { actor: "walker" | "navigator" } =>
+      entry.actor === "walker" || entry.actor === "navigator",
+    )
+    .map((entry) => ({ actor: entry.actor, turn: entry.turn, text: entry.text }));
+}
+
+async function requestAgent<T>(payload: unknown): Promise<T> {
+  const response = await fetch("/api/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? "The agent request failed.");
+  return data;
 }
 
 function makeInitialGame(stable = false): GameState {
@@ -466,69 +393,22 @@ function WalkerView({ game }: { game: GameState }) {
 function App() {
   const [game, setGame] = useState<GameState>(() => makeInitialGame(true));
   const [autoRun, setAutoRun] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
 
-  const step = useCallback(() => {
-    setGame((current) => {
-      if (current.status === "won") return current;
+  const step = useCallback(async () => {
+    if (isThinking || game.status === "won") return;
+    const snapshot = game;
+    const activeTurn = snapshot.turn + 1;
 
-      const activeTurn = current.turn + 1;
-
-      if (current.phase === "walker_report") {
-        const report = describeWalker(
-          current.maze,
-          current.position,
-          current.lastAction,
-          current.lastResult,
-        );
-        const log: LogEntry = {
-          id: `${activeTurn}-walker`,
-          turn: activeTurn,
-          actor: "walker",
-          label: "Walker reports",
-          text: report,
-        };
-        return {
-          ...current,
-          phase: "navigator_reply",
-          status: "running",
-          lastReport: report,
-          logs: [log, ...current.logs].slice(0, 18),
-        };
-      }
-
-      if (current.phase === "navigator_reply") {
-        // Navigator only receives the full maze, its prior hypotheses, and Walker's report.
-        const locatedCandidates = locateCandidates(
-          current.maze,
-          current.navigatorCandidates,
-          current.lastReport,
-        );
-        const instruction = chooseInstruction(current.maze, locatedCandidates);
-        const log: LogEntry = {
-          id: `${activeTurn}-navigator`,
-          turn: activeTurn,
-          actor: "navigator",
-          label: "Navigator replies",
-          text: instruction.message,
-        };
-        return {
-          ...current,
-          phase: "walker_move",
-          navigatorCandidates: locatedCandidates,
-          pendingDirection: instruction.direction,
-          lastInstruction: instruction.message,
-          logs: [log, ...current.logs].slice(0, 18),
-        };
-      }
-
-      // The environment applies Navigator's command to the hidden true position.
-      const direction = current.pendingDirection;
-      const nextPosition = direction && canMove(current.maze.cells, current.position, direction)
-        ? getNeighbor(current.position, direction)
-        : current.position;
-      const result: MoveResult = samePoint(nextPosition, current.position) ? "blocked" : "moved";
-      const nextCandidates = predictCandidates(current.maze, current.navigatorCandidates, direction);
-      const won = samePoint(nextPosition, current.maze.exit);
+    if (snapshot.phase === "walker_move") {
+      const direction = snapshot.pendingDirection;
+      const nextPosition = direction && canMove(snapshot.maze.cells, snapshot.position, direction)
+        ? getNeighbor(snapshot.position, direction)
+        : snapshot.position;
+      const result: MoveResult = samePoint(nextPosition, snapshot.position) ? "blocked" : "moved";
+      const nextCandidates = predictCandidates(snapshot.maze, snapshot.navigatorCandidates, direction);
+      const won = samePoint(nextPosition, snapshot.maze.exit);
       const action = direction
         ? DIRECTIONS.find((item) => item.key === direction)?.label ?? "—"
         : "—";
@@ -541,7 +421,7 @@ function App() {
         result,
       };
 
-      return {
+      setGame((current) => current !== snapshot ? current : ({
         ...current,
         position: nextPosition,
         navigatorCandidates: nextCandidates,
@@ -553,18 +433,75 @@ function App() {
         lastAction: direction,
         lastResult: result,
         logs: [log, ...current.logs].slice(0, 18),
+      }));
+      return;
+    }
+
+    setIsThinking(true);
+    setAgentError(null);
+    try {
+      if (snapshot.phase === "walker_report") {
+        const response = await requestAgent<WalkerAgentResponse>({
+          role: "walker",
+          turn: activeTurn,
+          observation: walkerObservation(snapshot),
+        });
+        const log: LogEntry = {
+          id: `${activeTurn}-walker`,
+          turn: activeTurn,
+          actor: "walker",
+          label: "Walker reports",
+          text: response.report,
+        };
+        setGame((current) => current !== snapshot ? current : ({
+          ...current,
+          phase: "navigator_reply",
+          status: "running",
+          lastReport: response.report,
+          logs: [log, ...current.logs].slice(0, 18),
+        }));
+        return;
+      }
+
+      const response = await requestAgent<NavigatorAgentResponse>({
+        role: "navigator",
+        turn: activeTurn,
+        maze: navigatorMaze(snapshot.maze),
+        previousCandidates: snapshot.navigatorCandidates,
+        conversation: sharedConversation(snapshot.logs),
+      });
+      const log: LogEntry = {
+        id: `${activeTurn}-navigator`,
+        turn: activeTurn,
+        actor: "navigator",
+        label: "Navigator replies",
+        text: response.message,
       };
-    });
-  }, []);
+      setGame((current) => current !== snapshot ? current : ({
+        ...current,
+        phase: "walker_move",
+        navigatorCandidates: response.candidates,
+        pendingDirection: response.direction,
+        lastInstruction: response.message,
+        logs: [log, ...current.logs].slice(0, 18),
+      }));
+    } catch (error) {
+      setAutoRun(false);
+      setAgentError(error instanceof Error ? error.message : "The agent request failed.");
+    } finally {
+      setIsThinking(false);
+    }
+  }, [game, isThinking]);
 
   useEffect(() => {
-    if (!autoRun || game.status === "won") return undefined;
-    const timer = window.setInterval(step, 950);
-    return () => window.clearInterval(timer);
-  }, [autoRun, game.status, step]);
+    if (!autoRun || isThinking || game.status === "won") return undefined;
+    const timer = window.setTimeout(() => void step(), 900);
+    return () => window.clearTimeout(timer);
+  }, [autoRun, game.status, isThinking, step]);
 
   function newMaze() {
     setAutoRun(false);
+    setAgentError(null);
     setGame(makeInitialGame());
   }
 
@@ -595,7 +532,7 @@ function App() {
           </div>
         </div>
         <div className="top-actions">
-          <div className="mode-pill"><span className="pulse-dot" />HIDDEN-START LOCALIZATION</div>
+          <div className="mode-pill"><span className="pulse-dot" />LIVE · GPT-5.6 LUNA</div>
           <button className="button button-quiet" onClick={newMaze}>New maze <span>↗</span></button>
         </div>
       </header>
@@ -624,12 +561,20 @@ function App() {
         </div>
         <div className="control-actions">
           <span className="turn-counter"><strong>{String(game.turn).padStart(2, "0")}</strong> turns</span>
-          <button className="button button-step" onClick={step} disabled={game.status === "won"}>{stepLabel} <span>→</span></button>
+          <button className="button button-step" onClick={() => void step()} disabled={game.status === "won" || isThinking}>{isThinking ? "Agent thinking…" : stepLabel} <span>→</span></button>
           <button className={`button button-run ${autoRun ? "is-running" : ""}`} onClick={() => setAutoRun((value) => !value)} disabled={game.status === "won"}>
             <span className="play-icon">{autoRun ? "Ⅱ" : "▶"}</span>{autoRun ? "Pause" : "Auto-run"}
           </button>
         </div>
       </section>
+
+      {agentError ? (
+        <div className="agent-error" role="alert">
+          <strong>Agent call failed</strong>
+          <span>{agentError}</span>
+          <button type="button" onClick={() => setAgentError(null)}>Dismiss</button>
+        </div>
+      ) : null}
 
       <section className="agent-grid">
         <article className="agent-card navigator-card">
