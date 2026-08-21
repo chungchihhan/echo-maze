@@ -80,6 +80,9 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
 .button-run { background: transparent; }
 .button-run.is-running { color: var(--aqua); border-color: rgba(134,223,199,.5); }
 .play-icon { display: inline-block; width: 13px; margin-right: 6px; color: var(--aqua); }
+.agent-error { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: -2px 0 18px; padding: 11px 13px; color: #e6aaa3; background: rgba(240,129,117,.07); border: 1px solid rgba(240,129,117,.25); border-radius: 7px; font-size: 11px; }
+.agent-error strong { color: var(--danger); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.agent-error button { padding: 4px 7px; color: var(--muted); background: transparent; border: 0; cursor: pointer; font-size: 10px; text-decoration: underline; }
 
 .agent-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr); gap: 18px; }
 .agent-card, .event-card { background: linear-gradient(145deg, rgba(18,27,25,.96), rgba(12,18,17,.96)); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
@@ -182,6 +185,8 @@ h1 em { color: #a4b1ac; font-family: Georgia, serif; font-weight: 400; }
   .local-grid { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); }
   .phase-track { align-items: flex-start; flex-direction: column; gap: 5px; }
   .phase-track i { display: none; }
+  .agent-error { grid-template-columns: 1fr auto; }
+  .agent-error span { grid-column: 1 / -1; grid-row: 2; }
   .chat-message { grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 15px 12px; }
   .chat-avatar { width: 27px; height: 27px; }
   .chat-meta { align-items: flex-start; flex-direction: column; gap: 3px; }

@@ -40,7 +40,7 @@ test("server-renders the Echo Maze prototype", async () => {
   assert.match(html, /Shared conversation/);
   assert.match(html, /Walker report/);
   assert.match(html, /Navigator locates/);
-  assert.match(text, /HIDDEN-START LOCALIZATION/);
+  assert.match(text, /LIVE · GPT-5.6 LUNA/);
   const routeLength = Number(text.match(/optimal (\d+) steps/)?.[1]);
   assert.ok(routeLength >= 24, `expected route length >= 24, received ${routeLength}`);
   assert.doesNotMatch(text, /18% NOISE|ORACLE BASELINE/);
@@ -48,20 +48,25 @@ test("server-renders the Echo Maze prototype", async () => {
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton|codex-preview/);
 });
 
-test("the product shell no longer depends on starter preview files", async () => {
-  const [page, layout, packageJson] = await Promise.all([
+test("the product shell uses isolated live agents", async () => {
+  const [page, route, layout, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/agent/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /generateMaze/);
-  assert.match(page, /describeWalker/);
-  assert.match(page, /chooseInstruction/);
+  assert.match(page, /requestAgent<WalkerAgentResponse>/);
+  assert.match(page, /requestAgent<NavigatorAgentResponse>/);
   assert.match(page, /const MIN_ROUTE_LENGTH = 24/);
   assert.match(page, /navigatorCandidates/);
   assert.match(page, /type GamePhase = "walker_report" \| "navigator_reply" \| "walker_move"/);
-  assert.match(page, /Navigator only receives the full maze, its prior hypotheses, and Walker's report/);
+  assert.doesNotMatch(page, /describeWalker|chooseInstruction|locateCandidates/);
+  assert.match(route, /const MODEL = "gpt-5\.6-luna"/);
+  assert.match(route, /You do not know your absolute row or column/);
+  assert.match(route, /you never receive Walker's true start or live position/);
+  assert.match(route, /https:\/\/api\.openai\.com\/v1\/responses/);
   assert.match(layout, /Echo Maze/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });
