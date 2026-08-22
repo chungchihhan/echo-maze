@@ -27,7 +27,39 @@ type WalkerObservation = {
   lastResult: "moved" | "blocked" | null;
   navigatorInstruction: string;
 };
+type SoloWalkerObservation = {
+  openDirections: Direction[];
+  blockedDirections: Direction[];
+  sightlines: Array<{
+    direction: Direction;
+    distanceToWall: number;
+    cells: Array<{
+      distance: number;
+      openDirections: Direction[];
+      isExit: boolean;
+    }>;
+  }>;
+  exitVisible: boolean;
+  lastAction: Direction | null;
+  lastResult: "moved" | "blocked" | null;
+};
+type SoloWalkerTurn = {
+  turn: number;
+  observation: SoloWalkerObservation;
+  observationSummary: string;
+  reasoning: string;
+  believedPosition: { x: number; y: number };
+  coordinateNote: string;
+  direction: Direction;
+  result: "moved" | "blocked" | null;
+};
 type AgentRequest =
+  | {
+      role: "solo_walker";
+      turn: number;
+      observation: SoloWalkerObservation;
+      conversation: SoloWalkerTurn[];
+    }
   | {
       role: "walker";
       turn: number;
@@ -379,6 +411,87 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (payload.role === "solo_walker") {
+      const result = await createStructuredResponse(
+        apiKey,
+        [
+          "You are the only agent inside Echo Maze.",
+          "You cannot see a map, your absolute coordinates, or any hidden state. You have no route tool and no notebook.",
+          "Your sole memory is the complete conversation from this run: prior observations, your prior reasoning summaries and decisions, and movement outcomes.",
+          "Maintain your own relative coordinate system in that conversation. The starting cell is (0,0); moving right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1.",
+          "A successful prior move changes your coordinate by exactly one. A blocked prior move leaves it unchanged. Recalculate your current believed coordinate from the history every turn.",
+          "Write one coordinate note for the current cell that records useful open directions, explored branches, dead ends, or a possible revisit. This note becomes part of the next turn's conversation.",
+          "The current observation shows open and blocked absolute directions plus straight line-of-sight corridors. A wall hides everything beyond it.",
+          "Use the conversation to build and revise a mental route: remember branches already attempted, recognize likely revisits from matching views and action history, and backtrack from dead ends.",
+          "Never claim certainty about a location or unseen geometry. Never invent coordinates.",
+          "If the exit is visible, choose the open direction whose sightline contains isExit=true.",
+          "Otherwise prefer an open branch you believe has not been explored; when necessary, deliberately backtrack.",
+          "Return a concise Traditional Chinese observation summary and a concise, useful reasoning summary that makes your memory strategy observable.",
+          "Choose exactly one direction from the currently open directions.",
+        ].join(" "),
+        {
+          turn: payload.turn,
+          currentObservation: payload.observation,
+          conversation: payload.conversation,
+        },
+        "solo_walker_decision",
+        {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            observation_summary: { type: "string", minLength: 1, maxLength: 220 },
+            reasoning_summary: { type: "string", minLength: 1, maxLength: 360 },
+            believed_position: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                x: { type: "integer", minimum: -100, maximum: 100 },
+                y: { type: "integer", minimum: -100, maximum: 100 },
+              },
+              required: ["x", "y"],
+            },
+            coordinate_note: { type: "string", minLength: 1, maxLength: 280 },
+            direction: { type: "string", enum: DIRECTIONS },
+          },
+          required: ["observation_summary", "reasoning_summary", "believed_position", "coordinate_note", "direction"],
+        },
+        900,
+        "low",
+      );
+
+      const observationSummary = typeof result.data.observation_summary === "string"
+        ? result.data.observation_summary.trim()
+        : "";
+      const reasoning = typeof result.data.reasoning_summary === "string"
+        ? result.data.reasoning_summary.trim()
+        : "";
+      const coordinateNote = typeof result.data.coordinate_note === "string"
+        ? result.data.coordinate_note.trim()
+        : "";
+      const believedPosition = result.data.believed_position && typeof result.data.believed_position === "object"
+        ? result.data.believed_position as { x?: unknown; y?: unknown }
+        : null;
+      if (!observationSummary || !reasoning || !coordinateNote || !believedPosition
+        || !Number.isInteger(believedPosition.x) || !Number.isInteger(believedPosition.y)
+        || !isDirection(result.data.direction)) {
+        throw new Error("Solo Walker returned an invalid decision.");
+      }
+      if (!payload.observation.openDirections.includes(result.data.direction)) {
+        throw new Error("Solo Walker selected a direction that is visibly blocked.");
+      }
+
+      return json({
+        role: "solo_walker",
+        model: MODEL,
+        observationSummary,
+        reasoning,
+        believedPosition: { x: believedPosition.x as number, y: believedPosition.y as number },
+        coordinateNote,
+        direction: result.data.direction,
+        meta: result.meta,
+      });
+    }
+
     if (payload.role === "walker") {
       const result = await createStructuredResponse(
         apiKey,

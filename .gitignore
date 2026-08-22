@@ -41,4 +41,4 @@ yarn-error.log*
 /work/
 
 # local experiment transcripts and review notes
-/docs/experiments/
+/docs/
