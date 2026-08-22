@@ -5,38 +5,96 @@ const DIRECTIONS = ["up", "right", "down", "left"] as const;
 
 type Direction = (typeof DIRECTIONS)[number];
 type Point = { r: number; c: number };
+type NavigatorMaze = {
+  size: number;
+  exit: Point;
+  cells: Array<{ r: number; c: number; open: Direction[] }>;
+};
+type WalkerObservation = {
+  openDirections: Direction[];
+  blockedDirections: Direction[];
+  sightlines: Array<{
+    direction: Direction;
+    distanceToWall: number;
+    cells: Array<Point & {
+      distance: number;
+      openDirections: Direction[];
+      isExit: boolean;
+    }>;
+  }>;
+  exitVisible: boolean;
+  lastAction: Direction | null;
+  lastResult: "moved" | "blocked" | null;
+  navigatorInstruction: string;
+};
 type AgentRequest =
   | {
       role: "walker";
       turn: number;
-      observation: {
-        openDirections: Direction[];
-        blockedDirections: Direction[];
-        exitVisible: boolean;
-        lastAction: Direction | null;
-        lastResult: "moved" | "blocked" | null;
-        navigatorInstruction: string;
-      };
+      observation: WalkerObservation;
+    }
+  | {
+      role: "walker_check";
+      turn: number;
+      instruction: string;
+      direction: Direction | null;
+      observation: WalkerObservation;
     }
   | {
       role: "navigator";
       turn: number;
-      maze: {
-        size: number;
-        exit: Point;
-        cells: Array<{ r: number; c: number; open: Direction[] }>;
-      };
+      maze: NavigatorMaze;
       previousCandidates: Point[];
-      conversation: Array<{ actor: "walker" | "navigator"; turn: number; text: string }>;
+      conversation: Array<{
+        actor: "walker" | "navigator";
+        turn: number;
+        kind: "report" | "instruction" | "verification" | "challenge";
+        text: string;
+      }>;
     };
 
 type OpenAIResponse = {
+  id?: string;
+  status?: "completed" | "failed" | "in_progress" | "cancelled" | "queued" | "incomplete";
+  incomplete_details?: { reason?: string } | null;
+  error?: { code?: string; message?: string } | null;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    output_tokens_details?: { reasoning_tokens?: number };
+  } | null;
   output_text?: string;
   output?: Array<{
     type?: string;
-    content?: Array<{ type?: string; text?: string }>;
+    content?: Array<{ type?: string; text?: string; refusal?: string }>;
   }>;
 };
+
+type AgentDiagnostic = {
+  code: string;
+  requestId: string | null;
+  responseId: string | null;
+  responseStatus: string | null;
+  incompleteReason: string | null;
+  attempts: number;
+  timeoutMs: number;
+  outputPreview?: string;
+};
+
+class AgentCallError extends Error {
+  code: string;
+  retryable: boolean;
+  diagnostic: AgentDiagnostic;
+
+  constructor(message: string, code: string, retryable: boolean, diagnostic: AgentDiagnostic) {
+    super(message);
+    this.name = "AgentCallError";
+    this.code = code;
+    this.retryable = retryable;
+    this.diagnostic = diagnostic;
+  }
+}
 
 function json(data: unknown, status = 200) {
   return Response.json(data, {
@@ -45,14 +103,26 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function getOutputText(response: OpenAIResponse) {
+function getOutput(response: OpenAIResponse) {
   if (response.output_text) return response.output_text;
+  let refusal = "";
   for (const item of response.output ?? []) {
     for (const content of item.content ?? []) {
       if (content.type === "output_text" && content.text) return content.text;
+      if (content.type === "refusal" && content.refusal) refusal = content.refusal;
     }
   }
-  throw new Error("The model returned no text output.");
+  if (refusal) return { refusal };
+  return null;
+}
+
+function usageSummary(response: OpenAIResponse) {
+  return {
+    inputTokens: response.usage?.input_tokens ?? null,
+    outputTokens: response.usage?.output_tokens ?? null,
+    reasoningTokens: response.usage?.output_tokens_details?.reasoning_tokens ?? null,
+    totalTokens: response.usage?.total_tokens ?? null,
+  };
 }
 
 async function createStructuredResponse(
@@ -64,40 +134,168 @@ async function createStructuredResponse(
   maxOutputTokens: number,
   reasoningEffort: "none" | "low",
 ) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      instructions,
-      input: JSON.stringify(input),
-      reasoning: { effort: reasoningEffort },
-      max_output_tokens: maxOutputTokens,
-      store: false,
-      text: {
-        verbosity: "low",
-        format: {
-          type: "json_schema",
-          name: schemaName,
-          strict: true,
-          schema,
-        },
-      },
-    }),
-    signal: AbortSignal.timeout(45_000),
-  });
+  const timeoutMs = 90_000;
+  let lastError: AgentCallError | null = null;
 
-  const body = (await response.json()) as OpenAIResponse & {
-    error?: { message?: string };
-  };
-  if (!response.ok) {
-    throw new Error(body.error?.message ?? `OpenAI request failed with status ${response.status}.`);
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const startedAt = Date.now();
+    let response: Response;
+    try {
+      response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          instructions,
+          input: JSON.stringify(input),
+          reasoning: { effort: reasoningEffort },
+          max_output_tokens: maxOutputTokens * attempt,
+          store: false,
+          text: {
+            verbosity: "low",
+            format: {
+              type: "json_schema",
+              name: schemaName,
+              strict: true,
+              schema,
+            },
+          },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      lastError = new AgentCallError(
+        timedOut
+          ? `Agent response timed out after ${timeoutMs / 1000} seconds.`
+          : "Could not reach the OpenAI API.",
+        timedOut ? "timeout" : "network_error",
+        true,
+        {
+          code: timedOut ? "timeout" : "network_error",
+          requestId: null,
+          responseId: null,
+          responseStatus: null,
+          incompleteReason: null,
+          attempts: attempt,
+          timeoutMs,
+        },
+      );
+      if (attempt < 2) continue;
+      throw lastError;
+    }
+
+    const requestId = response.headers.get("x-request-id");
+    let body: OpenAIResponse;
+    try {
+      body = (await response.json()) as OpenAIResponse;
+    } catch {
+      lastError = new AgentCallError(
+        "OpenAI returned an unreadable response.",
+        "invalid_api_response",
+        response.status >= 500,
+        {
+          code: "invalid_api_response",
+          requestId,
+          responseId: null,
+          responseStatus: String(response.status),
+          incompleteReason: null,
+          attempts: attempt,
+          timeoutMs,
+        },
+      );
+      if (attempt < 2 && lastError.retryable) continue;
+      throw lastError;
+    }
+
+    const diagnostic: AgentDiagnostic = {
+      code: "unknown",
+      requestId,
+      responseId: body.id ?? null,
+      responseStatus: body.status ?? String(response.status),
+      incompleteReason: body.incomplete_details?.reason ?? null,
+      attempts: attempt,
+      timeoutMs,
+    };
+
+    if (!response.ok) {
+      const retryable = response.status === 408 || response.status === 409
+        || response.status === 429 || response.status >= 500;
+      lastError = new AgentCallError(
+        body.error?.message ?? `OpenAI request failed with status ${response.status}.`,
+        body.error?.code ?? `http_${response.status}`,
+        retryable,
+        { ...diagnostic, code: body.error?.code ?? `http_${response.status}` },
+      );
+      if (attempt < 2 && retryable) continue;
+      throw lastError;
+    }
+
+    if (body.status === "incomplete") {
+      const reason = body.incomplete_details?.reason ?? "unknown reason";
+      lastError = new AgentCallError(
+        `Agent output was incomplete (${reason}).`,
+        "incomplete_output",
+        true,
+        { ...diagnostic, code: "incomplete_output" },
+      );
+      if (attempt < 2) continue;
+      throw lastError;
+    }
+
+    const output = getOutput(body);
+    if (output && typeof output === "object") {
+      throw new AgentCallError(
+        `Agent refused the request: ${output.refusal}`,
+        "refusal",
+        false,
+        { ...diagnostic, code: "refusal" },
+      );
+    }
+    if (!output) {
+      lastError = new AgentCallError(
+        "The model completed without a text output.",
+        "missing_output_text",
+        true,
+        { ...diagnostic, code: "missing_output_text" },
+      );
+      if (attempt < 2) continue;
+      throw lastError;
+    }
+
+    try {
+      return {
+        data: JSON.parse(output) as Record<string, unknown>,
+        meta: {
+          model: MODEL,
+          requestId,
+          responseId: body.id ?? null,
+          status: body.status ?? "completed",
+          attempts: attempt,
+          latencyMs: Date.now() - startedAt,
+          usage: usageSummary(body),
+        },
+      };
+    } catch {
+      lastError = new AgentCallError(
+        "The model returned truncated or invalid structured JSON.",
+        "invalid_structured_json",
+        true,
+        {
+          ...diagnostic,
+          code: "invalid_structured_json",
+          outputPreview: output.slice(0, 240),
+        },
+      );
+      if (attempt < 2) continue;
+      throw lastError;
+    }
   }
 
-  return JSON.parse(getOutputText(body)) as Record<string, unknown>;
+  throw lastError ?? new Error("Agent request failed.");
 }
 
 function isDirection(value: unknown): value is Direction {
@@ -115,6 +313,58 @@ function normalizeCandidates(value: unknown, size: number) {
     unique.set(`${r},${c}`, { r: r as number, c: c as number });
   }
   return [...unique.values()].slice(0, size * size);
+}
+
+function pointKey(point: Point) {
+  return `${point.r},${point.c}`;
+}
+
+function routeBetween(maze: NavigatorMaze, start: Point, goal: Point) {
+  const cells = new Map(maze.cells.map((cell) => [pointKey(cell), cell]));
+  if (!cells.has(pointKey(start)) || !cells.has(pointKey(goal))) return [];
+
+  const vectors: Record<Direction, Point> = {
+    up: { r: -1, c: 0 },
+    right: { r: 0, c: 1 },
+    down: { r: 1, c: 0 },
+    left: { r: 0, c: -1 },
+  };
+  const queue = [start];
+  const previous = new Map<string, Point | null>([[pointKey(start), null]]);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || pointKey(current) === pointKey(goal)) break;
+    const cell = cells.get(pointKey(current));
+    if (!cell) continue;
+
+    for (const direction of cell.open) {
+      const vector = vectors[direction];
+      const next = { r: current.r + vector.r, c: current.c + vector.c };
+      if (!cells.has(pointKey(next)) || previous.has(pointKey(next))) continue;
+      previous.set(pointKey(next), current);
+      queue.push(next);
+    }
+  }
+
+  if (!previous.has(pointKey(goal))) return [];
+  const route: Point[] = [];
+  let cursor: Point | null = goal;
+  while (cursor) {
+    route.unshift(cursor);
+    cursor = previous.get(pointKey(cursor)) ?? null;
+  }
+  return route;
+}
+
+function directionBetween(from: Point, to: Point): Direction | null {
+  const rowDelta = to.r - from.r;
+  const columnDelta = to.c - from.c;
+  if (rowDelta === -1 && columnDelta === 0) return "up";
+  if (rowDelta === 1 && columnDelta === 0) return "down";
+  if (rowDelta === 0 && columnDelta === 1) return "right";
+  if (rowDelta === 0 && columnDelta === -1) return "left";
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -135,8 +385,9 @@ export async function POST(request: Request) {
         [
           "You are Walker in Echo Maze.",
           "You do not know your absolute row or column and must never invent coordinates.",
-          "You only know the supplied local observation and the Navigator's latest instruction.",
-          "Give Navigator one concise Traditional Chinese sentence describing the previous move outcome and which absolute directions are open or blocked.",
+          "You only know the supplied line-of-sight observation and the Navigator's latest instruction.",
+          "Each sightline tells you how many cells are visible before a wall and which side passages are visible along that straight corridor.",
+          "Give Navigator one precise Traditional Chinese sentence describing the previous move outcome, corridor distances, useful visible junctions, and a visible exit if present.",
           "Do not add facts that are absent from the observation.",
         ].join(" "),
         { turn: payload.turn, ...payload.observation },
@@ -145,16 +396,69 @@ export async function POST(request: Request) {
           type: "object",
           additionalProperties: false,
           properties: {
-            report: { type: "string", minLength: 1, maxLength: 180 },
+            report: { type: "string", minLength: 1, maxLength: 260 },
           },
           required: ["report"],
         },
-        220,
+        600,
         "none",
       );
-      const report = typeof result.report === "string" ? result.report.trim() : "";
+      const report = typeof result.data.report === "string" ? result.data.report.trim() : "";
       if (!report) throw new Error("Walker returned an empty report.");
-      return json({ role: "walker", model: MODEL, report });
+      return json({ role: "walker", model: MODEL, report, meta: result.meta });
+    }
+
+    if (payload.role === "walker_check") {
+      if (!payload.direction || !isDirection(payload.direction)) {
+        return json({ error: "Walker received no valid movement direction." }, 400);
+      }
+      const result = await createStructuredResponse(
+        apiKey,
+        [
+          "You are Walker in Echo Maze and must verify Navigator's instruction before moving.",
+          "You know only the supplied line-of-sight observation; never invent coordinates or unseen facts.",
+          "Challenge the instruction if its movement direction is blocked by a wall.",
+          "Also challenge it if Navigator explicitly claims the exit is currently visible in a direction but your sightlines contradict that claim.",
+          "Do not challenge merely because Navigator says a direction leads toward or closer to an unseen exit; that is routing advice, not a claim of current visibility.",
+          "If the instruction is locally possible and not contradicted, choose move.",
+          "Reply in one concise Traditional Chinese sentence explaining what you can verify.",
+        ].join(" "),
+        {
+          turn: payload.turn,
+          instruction: payload.instruction,
+          proposedDirection: payload.direction,
+          observation: payload.observation,
+        },
+        "walker_instruction_check",
+        {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            decision: { type: "string", enum: ["move", "challenge"] },
+            message: { type: "string", minLength: 1, maxLength: 180 },
+          },
+          required: ["decision", "message"],
+        },
+        600,
+        "none",
+      );
+      let decision = result.data.decision === "challenge" ? "challenge" : "move";
+      let message = typeof result.data.message === "string" ? result.data.message.trim() : "";
+
+      if (payload.observation.blockedDirections.includes(payload.direction)) {
+        decision = "challenge";
+        const directionLabel = { up: "上", right: "右", down: "下", left: "左" }[payload.direction];
+        message = `${directionLabel}方是牆，我無法照這個方向移動，請重新判斷我的位置。`;
+      }
+      if (!message) throw new Error("Walker returned an empty verification message.");
+
+      return json({
+        role: "walker_check",
+        model: MODEL,
+        decision,
+        message,
+        meta: result.meta,
+      });
     }
 
     if (payload.role !== "navigator" || !payload.maze) {
@@ -167,8 +471,10 @@ export async function POST(request: Request) {
         "You are Navigator in Echo Maze.",
         "You see the complete maze and exit, but you never receive Walker's true start or live position.",
         "Infer Walker's possible zero-based coordinates only from the maze, Walker reports, and your prior instructions.",
+        "Treat previousCandidates as a revisable belief, not a hard constraint; if any new report, movement outcome, or challenge contradicts them, rebuild the candidate set from the full conversation.",
         "Keep every still-plausible candidate in candidate_positions; do not pretend localization is certain.",
-        "Choose exactly one absolute movement direction that either distinguishes candidates or advances a localized Walker toward the exit.",
+        "Your primary task is localization. Choose exactly one probing direction while multiple positions remain plausible.",
+        "When exactly one well-supported candidate remains, a deterministic route tool will replace your proposed movement with the correct next route step from that claimed position.",
         "The message must be one concise Traditional Chinese sentence and must match direction.",
       ].join(" "),
       {
@@ -201,25 +507,55 @@ export async function POST(request: Request) {
         },
         required: ["message", "direction", "candidate_positions"],
       },
-      700,
+      2600,
       "low",
     );
 
-    const message = typeof result.message === "string" ? result.message.trim() : "";
-    if (!message || !isDirection(result.direction)) {
+    let message = typeof result.data.message === "string" ? result.data.message.trim() : "";
+    if (!message || !isDirection(result.data.direction)) {
       throw new Error("Navigator returned an invalid instruction.");
+    }
+
+    const candidates = normalizeCandidates(result.data.candidate_positions, payload.maze.size);
+    let direction = result.data.direction;
+    let navigationMode: "localizing" | "routing" = "localizing";
+    let route: Point[] = [];
+
+    if (candidates.length === 1) {
+      const claimedRoute = routeBetween(payload.maze, candidates[0], payload.maze.exit);
+      const routeDirection = claimedRoute.length >= 2
+        ? directionBetween(claimedRoute[0], claimedRoute[1])
+        : null;
+      if (routeDirection) {
+        navigationMode = "routing";
+        route = claimedRoute;
+        direction = routeDirection;
+        const directionLabel = { up: "上", right: "右", down: "下", left: "左" }[direction];
+        message = `位置假設已鎖定；依規劃路線請向${directionLabel}移動一格。`;
+      }
     }
 
     return json({
       role: "navigator",
       model: MODEL,
       message,
-      direction: result.direction,
-      candidates: normalizeCandidates(result.candidate_positions, payload.maze.size),
+      direction,
+      candidates,
+      navigationMode,
+      route,
+      meta: result.meta,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Agent request failed.";
     console.error("Echo Maze agent error:", message);
-    return json({ error: message }, 502);
+    if (error instanceof AgentCallError) {
+      return json({
+        error: message,
+        code: error.code,
+        retryable: error.retryable,
+        diagnostic: error.diagnostic,
+      }, 502);
+    }
+    return json({ error: message, code: "agent_error", retryable: false }, 502);
   }
 }
