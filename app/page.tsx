@@ -85,10 +85,10 @@ type ReplayStatus = "starting" | "recording" | "error";
 type AgentFailure = { error?: string; code?: string; retryable?: boolean; diagnostic?: unknown };
 
 const DIRECTIONS: Array<{ key: DirectionKey; dr: number; dc: number; label: string }> = [
-  { key: "up", dr: -1, dc: 0, label: "上" },
-  { key: "right", dr: 0, dc: 1, label: "右" },
-  { key: "down", dr: 1, dc: 0, label: "下" },
-  { key: "left", dr: 0, dc: -1, label: "左" },
+  { key: "up", dr: -1, dc: 0, label: "Up" },
+  { key: "right", dr: 0, dc: 1, label: "Right" },
+  { key: "down", dr: 1, dc: 0, label: "Down" },
+  { key: "left", dr: 0, dc: -1, label: "Left" },
 ];
 
 const OPPOSITE: Record<DirectionKey, DirectionKey> = {
@@ -313,36 +313,89 @@ function StatusDot({ status }: { status: "live" | "idle" | "success" }) {
 }
 function PanelLabel({ children }: { children: ReactNode }) { return <span className="panel-label">{children}</span>; }
 
-function WalkerView({ game }: { game: GameState }) {
+function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
   const visible = visibleWalkerPoints(game.maze, game.position);
   return (
-    <div className="local-wrap solo-local-wrap">
-      <div className="local-grid" aria-label="Walker 沿通道延伸的直線視野">
+    <div className={`map-layer walker-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
+      <div className="local-grid" aria-label="Walker line-of-sight view along open corridors">
         {game.maze.cells.flat().map((cell) => {
           const point = { r: cell.r, c: cell.c };
-          if (!visible.has(pointKey(point))) return <div className="local-cell local-hidden" key={pointKey(point)} aria-label="被牆遮蔽的區域" />;
+          if (!visible.has(pointKey(point))) return <div className="local-cell local-hidden" key={pointKey(point)} aria-label="Area hidden by walls" />;
           const isCenter = samePoint(point, game.position);
           const isExit = samePoint(point, game.maze.exit);
           return (
             <div className={`local-cell ${isCenter ? "local-center" : ""} ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
               {isCenter ? <span className="local-walker">W</span> : null}
-              {isExit ? <span className="local-exit-mark">出口</span> : null}
+              {isExit ? <span className="local-exit-mark">EXIT</span> : null}
             </div>
           );
         })}
       </div>
-      <p className="view-caption">牆壁會阻擋視線；Walker 不知道絕對座標與完整地圖</p>
+    </div>
+  );
+}
+
+function SpectatorMap({ game, hidden }: { game: GameState; hidden: boolean }) {
+  return (
+    <div className={`map-layer spectator-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
+      <div className="maze-grid full-maze" aria-label="Complete maze spectator view">
+        {game.maze.cells.flat().map((cell) => {
+          const point = { r: cell.r, c: cell.c };
+          const isWalker = samePoint(point, game.position);
+          const isExit = samePoint(point, game.maze.exit);
+          return (
+            <div className={`maze-cell ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
+              {isExit ? <span className="exit-mark">EXIT</span> : null}
+              {isWalker ? <span className="spectator-walker">W</span> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MazeViewport({ game, showFullMap }: { game: GameState; showFullMap: boolean }) {
+  return (
+    <div className="map-viewport">
+      <div className="map-stage">
+        <WalkerView game={game} hidden={showFullMap} />
+        <SpectatorMap game={game} hidden={!showFullMap} />
+      </div>
+      <div className="map-legend-slot" aria-hidden="true">
+        <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
+          <span><i className="legend-swatch swatch-visible" />Visible corridor</span>
+          <span><i className="legend-swatch swatch-unknown" />Hidden by walls</span>
+        </div>
+        <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
+          <span><i className="legend-swatch swatch-walker" />Walker&apos;s actual position</span>
+          <span><i className="legend-swatch swatch-exit" />Exit</span>
+        </div>
+      </div>
+      <p className="map-mode-caption">
+        {showFullMap
+          ? "Spectator mode: the complete map and actual position are never shown to Walker."
+          : "Walls block sight; Walker has no absolute coordinates or complete map."}
+      </p>
     </div>
   );
 }
 
 function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThinking: boolean }) {
+  const streamRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    stream.scrollTo({ top: stream.scrollHeight, behavior: history.length > 1 ? "smooth" : "auto" });
+  }, [history.length, isThinking]);
+
   return (
-    <div className="thought-stream" aria-live="polite">
+    <div className="thought-stream" aria-live="polite" ref={streamRef}>
       {history.length === 0 && !isThinking ? (
         <div className="thought-empty">
           <span>◎</span>
-          <p>尚未形成任何記憶。第一回合開始後，Walker 會只依靠這局累積的 conversation 判斷路線。</p>
+          <p>No memory yet. Once the first turn begins, Walker must navigate using only the conversation accumulated in this run.</p>
         </div>
       ) : null}
       {history.map((entry) => (
@@ -358,19 +411,19 @@ function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThink
           </div>
           <div className="coordinate-note">
             <div><span>SELF-REPORTED POSITION</span><strong>({entry.believedPosition?.x ?? 0}, {entry.believedPosition?.y ?? 0})</strong></div>
-            <p>{entry.coordinateNote ?? "這筆舊紀錄尚未包含座標註記。"}</p>
+            <p>{entry.coordinateNote ?? "This older entry has no coordinate note."}</p>
           </div>
           <div className="thought-decision">
             <span>DECISION</span>
-            <strong>向{DIRECTIONS.find((item) => item.key === entry.direction)?.label}走</strong>
+            <strong>Move {DIRECTIONS.find((item) => item.key === entry.direction)?.label}</strong>
             <em className={entry.result === "blocked" ? "is-blocked" : ""}>
-              {entry.result === "blocked" ? "撞牆，留在原地" : entry.result === "moved" ? "移動成功" : "等待執行"}
+              {entry.result === "blocked" ? "Blocked — stayed in place" : entry.result === "moved" ? "Move succeeded" : "Awaiting move"}
             </em>
           </div>
         </article>
       ))}
       {isThinking ? (
-        <div className="thinking-row"><span /><span /><span /><p>Walker 正在回顧整段 conversation…</p></div>
+        <div className="thinking-row"><span /><span /><span /><p>Walker is reviewing the full conversation…</p></div>
       ) : null}
     </div>
   );
@@ -379,6 +432,7 @@ function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThink
 function App() {
   const [game, setGame] = useState<GameState>(() => makeInitialGame(true));
   const [autoRun, setAutoRun] = useState(false);
+  const [showFullMap, setShowFullMap] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [replayRunId, setReplayRunId] = useState<string | null>(null);
@@ -522,7 +576,7 @@ function App() {
     } catch (error) { setAgentError(error instanceof Error ? error.message : "Could not export this replay."); }
   }
 
-  const statusLabel = game.status === "won" ? "出口已找到" : game.status === "ready" ? "準備開始" : "探索進行中";
+  const statusLabel = game.status === "won" ? "Exit found" : game.status === "ready" ? "Ready" : "Exploring";
   const statusTone = game.status === "won" ? "success" : game.status === "ready" ? "idle" : "live";
   const lastThought = game.history.at(-1);
   const reportedPosition = lastThought?.believedPosition ?? { x: 0, y: 0 };
@@ -550,7 +604,7 @@ function App() {
       <section className="control-bar">
         <div className="control-info">
           <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span><span className="run-separator">/</span><span>optimal {game.maze.routeLength} steps</span><span className="run-separator">/</span><span className={`replay-state replay-${replayStatus}`}>replay {replayStatus}</span></div>
-          <div className="phase-track" aria-label="回合階段"><span className={game.phase === "walker_think" ? "is-active" : ""}>1 · Observe & reason</span><i>→</i><span className={game.phase === "walker_move" ? "is-active" : ""}>2 · Move & remember outcome</span></div>
+          <div className="phase-track" aria-label="Turn phases"><span className={game.phase === "walker_think" ? "is-active" : ""}>1 · Observe & reason</span><i>→</i><span className={game.phase === "walker_move" ? "is-active" : ""}>2 · Move & remember outcome</span></div>
         </div>
         <div className="control-actions">
           <span className="turn-counter"><strong>{String(game.turn).padStart(2, "0")}</strong> turns</span>
@@ -565,23 +619,31 @@ function App() {
       <section className="agent-grid solo-grid">
         <article className="agent-card thought-card">
           <div className="card-head">
-            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>AGENT OUTPUT</PanelLabel><h2>Walker&apos;s train of thought</h2></div></div>
+            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>AGENT OUTPUT</PanelLabel><h2>Walker&apos;s reasoning log</h2></div></div>
             <span className="visibility-tag">FULL RUN HISTORY</span>
           </div>
-          <div className="thought-disclaimer">可觀測的判斷摘要，由 Walker 每回合主動輸出；不是隱藏的模型 chain-of-thought。</div>
+          <div className="thought-disclaimer">A concise explanation Walker provides each turn—not the model&apos;s hidden chain of thought.</div>
           <ThoughtStream history={game.history} isThinking={isThinking} />
         </article>
 
         <article className="agent-card walker-card">
           <div className="card-head">
             <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div></div>
-            <span className="visibility-tag local-tag">LINE OF SIGHT</span>
+            <div className="card-head-actions">
+              <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>
+                {showFullMap ? "Show Walker view" : "Show full map"}
+              </button>
+              <span className={`visibility-tag ${showFullMap ? "spectator-tag" : "local-tag"}`}>{showFullMap ? "SPECTATOR" : "LINE OF SIGHT"}</span>
+            </div>
           </div>
-          <div className="map-heading"><span>What the agent can see now</span><span>Walls hide everything beyond them</span></div>
-          <WalkerView game={game} />
+          <div className="map-heading">
+            <span>{showFullMap ? "Full maze for the observer" : "What the agent can see now"}</span>
+            <span>{showFullMap ? "Hidden from Walker" : "Walls hide everything beyond them"}</span>
+          </div>
+          <MazeViewport game={game} showFullMap={showFullMap} />
           <div className="action-readout">
-            <div><span className="readout-label">LAST ACTION</span><strong>{game.lastAction ? `向${DIRECTIONS.find((item) => item.key === game.lastAction)?.label}` : "—"}</strong></div>
-            <div><span className="readout-label">OUTCOME</span><strong className={game.lastResult === "blocked" ? "blocked-text" : "match"}>{game.lastResult === "blocked" ? "撞牆" : game.lastResult === "moved" ? "成功移動" : "等待開始"}</strong></div>
+            <div><span className="readout-label">LAST ACTION</span><strong>{game.lastAction ? `Move ${DIRECTIONS.find((item) => item.key === game.lastAction)?.label}` : "—"}</strong></div>
+            <div><span className="readout-label">OUTCOME</span><strong className={game.lastResult === "blocked" ? "blocked-text" : "match"}>{game.lastResult === "blocked" ? "Blocked" : game.lastResult === "moved" ? "Move succeeded" : "Not started"}</strong></div>
             <div><span className="readout-label">COLLISIONS</span><strong>{String(game.collisions).padStart(2, "0")}</strong></div>
           </div>
           <div className="coordinate-readout">
@@ -591,7 +653,6 @@ function App() {
             </strong>
             <em>{lastThought ? (coordinateIsConsistent ? "coordinate consistent" : "coordinate drift detected") : "origin"}</em>
           </div>
-          <div className="message-block"><div className="message-meta"><span>Current decision</span><span>turn {String(lastThought?.turn ?? 0).padStart(2, "0")}</span></div><p className="message-bubble walker-message">{lastThought ? `${lastThought.reasoning} → 向${DIRECTIONS.find((item) => item.key === lastThought.direction)?.label}走。` : "正在等待第一次觀察。"}</p></div>
         </article>
       </section>
 
