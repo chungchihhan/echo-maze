@@ -426,7 +426,8 @@ export async function POST(request: Request) {
           "Never claim certainty about a location or unseen geometry. Never invent coordinates.",
           "If the exit is visible, choose the open direction whose sightline contains isExit=true.",
           "Otherwise prefer an open branch you believe has not been explored; when necessary, deliberately backtrack.",
-          "Return a concise Traditional Chinese observation summary and a concise, useful reasoning summary that makes your memory strategy observable.",
+          "Return a concise English observation summary and a concise, useful English reasoning summary that makes your memory strategy observable.",
+          "Write the coordinate note in English as well.",
           "Choose exactly one direction from the currently open directions.",
         ].join(" "),
         {
