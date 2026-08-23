@@ -48,6 +48,12 @@ type ReplayEventRow = {
   payload_json: string;
 };
 
+type ReplayRunSummaryRow = Omit<ReplayRunRow, "maze_json" | "initial_position_json"> & {
+  event_count: number;
+  max_turn: number | null;
+  had_error: number;
+};
+
 function json(data: unknown, status = 200) {
   return Response.json(data, {
     status,
@@ -102,19 +108,45 @@ function parseStoredJson(value: string) {
   }
 }
 
+function compactEventPayload(type: string, payload: unknown) {
+  if (type !== "agent_request" || !payload || typeof payload !== "object") return payload;
+  const request = payload as Record<string, unknown>;
+  return {
+    role: request.role,
+    turn: request.turn,
+    observation: request.observation,
+    instruction: request.instruction,
+    direction: request.direction,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const db = database();
     await ensureReplayTables(db);
-    const runId = new URL(request.url).searchParams.get("id");
+    const searchParams = new URL(request.url).searchParams;
+    const runId = searchParams.get("id");
+    const compact = searchParams.get("compact") === "1";
 
     if (!runId) {
       const rows = await db.prepare(`
-        SELECT id, created_at, updated_at, status, model, maze_seed
-        FROM replay_runs
-        ORDER BY created_at DESC
+        SELECT
+          r.id,
+          r.created_at,
+          r.updated_at,
+          r.status,
+          r.model,
+          r.maze_seed,
+          COUNT(e.sequence) AS event_count,
+          SUM(CASE WHEN e.type IN ('solo_walker_move', 'environment_move') THEN 1 ELSE 0 END) AS max_turn,
+          MAX(CASE WHEN e.type = 'agent_error' THEN 1 ELSE 0 END) AS had_error
+        FROM replay_runs r
+        LEFT JOIN replay_events e ON e.run_id = r.id
+        GROUP BY r.id, r.created_at, r.updated_at, r.status, r.model, r.maze_seed
+        HAVING SUM(CASE WHEN e.type IN ('solo_walker_move', 'environment_move') THEN 1 ELSE 0 END) > 0
+        ORDER BY r.created_at DESC
         LIMIT 30
-      `).all<Omit<ReplayRunRow, "maze_json" | "initial_position_json">>();
+      `).all<ReplayRunSummaryRow>();
       return json({ runs: rows.results });
     }
 
@@ -150,7 +182,9 @@ export async function GET(request: Request) {
         turn: event.turn,
         phase: event.phase,
         type: event.type,
-        payload: parseStoredJson(event.payload_json),
+        payload: compact
+          ? compactEventPayload(event.type, parseStoredJson(event.payload_json))
+          : parseStoredJson(event.payload_json),
       })),
     });
   } catch (error) {
