@@ -83,6 +83,42 @@ type SoloWalkerResponse = {
 };
 type ReplayStatus = "starting" | "recording" | "error";
 type AgentFailure = { error?: string; code?: string; retryable?: boolean; diagnostic?: unknown };
+type ReplayRunSummary = {
+  id: string;
+  created_at: number;
+  updated_at: number;
+  status: string;
+  model: string;
+  maze_seed: string;
+  event_count: number;
+  max_turn: number | null;
+  had_error: number;
+};
+type ReplayEvent = {
+  sequence: number;
+  createdAt: number;
+  turn: number;
+  phase: string;
+  type: string;
+  payload: unknown;
+};
+type ReplayDetail = {
+  run: {
+    id: string;
+    status: string;
+    mazeSeed: string;
+    maze: Maze;
+    initialPosition: Point;
+  };
+  events: ReplayEvent[];
+};
+type ReplayFrame = {
+  game: GameState;
+  sequence: number;
+  note: string;
+  error: string | null;
+};
+type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 
 const DIRECTIONS: Array<{ key: DirectionKey; dr: number; dc: number; label: string }> = [
   { key: "up", dr: -1, dc: 0, label: "Up" },
@@ -265,6 +301,123 @@ function relativePositionAtObservation(history: WalkerTurn[], entryIndex: number
   return position;
 }
 
+function emptyObservation(): WalkerObservation {
+  return {
+    openDirections: [],
+    blockedDirections: [],
+    sightlines: [],
+    exitVisible: false,
+    lastAction: null,
+    lastResult: null,
+  };
+}
+
+function replayPayload(value: unknown) {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function replayPoint(value: unknown, fallback: Point): Point {
+  if (!value || typeof value !== "object") return fallback;
+  const point = value as Partial<Point>;
+  return Number.isInteger(point.r) && Number.isInteger(point.c)
+    ? { r: point.r as number, c: point.c as number }
+    : fallback;
+}
+
+function buildReplayFrames(detail: ReplayDetail): ReplayFrame[] {
+  let state: GameState = {
+    maze: detail.run.maze,
+    position: detail.run.initialPosition,
+    relativePosition: { x: 0, y: 0 },
+    phase: "walker_think",
+    pendingDirection: null,
+    turn: 0,
+    collisions: 0,
+    status: "ready",
+    lastAction: null,
+    lastResult: null,
+    history: [],
+  };
+  const frames: ReplayFrame[] = [{ game: state, sequence: 0, note: "Run loaded", error: null }];
+  let pendingObservation = emptyObservation();
+
+  for (const event of detail.events) {
+    const payload = replayPayload(event.payload);
+
+    if (event.type === "agent_request" && payload.role === "solo_walker") {
+      if (payload.observation && typeof payload.observation === "object") {
+        pendingObservation = payload.observation as WalkerObservation;
+      }
+      continue;
+    }
+
+    if (event.type === "solo_walker_response") {
+      if (typeof payload.direction !== "string" || !DIRECTIONS.some((item) => item.key === payload.direction)) continue;
+      const believed = replayPayload(payload.believedPosition);
+      const entry: WalkerTurn = {
+        turn: typeof payload.turn === "number" ? payload.turn : state.turn + 1,
+        observation: pendingObservation,
+        observationSummary: typeof payload.observationSummary === "string" ? payload.observationSummary : "Observation unavailable.",
+        reasoning: typeof payload.reasoning === "string" ? payload.reasoning : "Reasoning unavailable.",
+        believedPosition: {
+          x: typeof believed.x === "number" ? believed.x : 0,
+          y: typeof believed.y === "number" ? believed.y : 0,
+        },
+        coordinateNote: typeof payload.coordinateNote === "string" ? payload.coordinateNote : "Coordinate note unavailable.",
+        direction: payload.direction as DirectionKey,
+        result: null,
+      };
+      state = {
+        ...state,
+        phase: "walker_move",
+        pendingDirection: entry.direction,
+        status: "running",
+        history: [...state.history, entry],
+      };
+      frames.push({ game: state, sequence: event.sequence, note: `Turn ${entry.turn}: decision`, error: null });
+      continue;
+    }
+
+    if (event.type === "solo_walker_move" || event.type === "environment_move") {
+      const direction = typeof payload.direction === "string" && DIRECTIONS.some((item) => item.key === payload.direction)
+        ? payload.direction as DirectionKey
+        : null;
+      const result: MoveResult = payload.result === "blocked" ? "blocked" : "moved";
+      const nextPosition = replayPoint(payload.to, state.position);
+      const relative = replayPayload(payload.relativePosition);
+      const nextRelativePosition = typeof relative.x === "number" && typeof relative.y === "number"
+        ? { x: relative.x, y: relative.y }
+        : {
+            x: state.relativePosition.x + (result === "moved" && direction === "right" ? 1 : result === "moved" && direction === "left" ? -1 : 0),
+            y: state.relativePosition.y + (result === "moved" && direction === "up" ? 1 : result === "moved" && direction === "down" ? -1 : 0),
+          };
+      const won = payload.won === true;
+      state = {
+        ...state,
+        position: nextPosition,
+        relativePosition: nextRelativePosition,
+        phase: "walker_think",
+        pendingDirection: null,
+        turn: state.turn + 1,
+        collisions: state.collisions + (result === "blocked" ? 1 : 0),
+        status: won ? "won" : "running",
+        lastAction: direction,
+        lastResult: result,
+        history: state.history.map((entry, index) => index === state.history.length - 1 ? { ...entry, result } : entry),
+      };
+      frames.push({ game: state, sequence: event.sequence, note: won ? "Exit reached" : `Turn ${state.turn}: ${result}`, error: null });
+      continue;
+    }
+
+    if (event.type === "agent_error") {
+      const message = typeof payload.error === "string" ? payload.error : "Agent call failed";
+      frames.push({ game: state, sequence: event.sequence, note: "Agent error", error: message });
+    }
+  }
+
+  return frames;
+}
+
 class AgentRequestError extends Error {
   details: AgentFailure;
   constructor(details: AgentFailure) {
@@ -437,6 +590,14 @@ function App() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [replayRunId, setReplayRunId] = useState<string | null>(null);
   const [replayStatus, setReplayStatus] = useState<ReplayStatus>("starting");
+  const [replayRuns, setReplayRuns] = useState<ReplayRunSummary[]>([]);
+  const [selectedReplayId, setSelectedReplayId] = useState("");
+  const [playbackFrames, setPlaybackFrames] = useState<ReplayFrame[]>([]);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(2);
+  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+  const [isReplayLoading, setIsReplayLoading] = useState(false);
+  const [replayLibraryError, setReplayLibraryError] = useState<string | null>(null);
   const replayRunIdRef = useRef<string | null>(null);
   const replaySequencesRef = useRef(new Map<string, number>());
   const replayQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -473,6 +634,59 @@ function App() {
   }, [queueReplay]);
 
   useEffect(() => { if (!replayRunIdRef.current) startReplay(game); }, [game, startReplay]);
+
+  const refreshReplayRuns = useCallback(async () => {
+    try {
+      const response = await fetch("/api/replays");
+      if (!response.ok) throw new Error("Could not load saved runs.");
+      const data = await response.json() as { runs?: ReplayRunSummary[] };
+      setReplayRuns(data.runs ?? []);
+      setReplayLibraryError(null);
+    } catch (error) {
+      setReplayLibraryError(error instanceof Error ? error.message : "Could not load saved runs.");
+    }
+  }, []);
+
+  useEffect(() => { void refreshReplayRuns(); }, [refreshReplayRuns]);
+
+  const loadReplay = useCallback(async (runId: string) => {
+    setSelectedReplayId(runId);
+    setIsReplayPlaying(false);
+    setPlaybackIndex(0);
+    if (!runId) {
+      setPlaybackFrames([]);
+      return;
+    }
+    setAutoRun(false);
+    setIsReplayLoading(true);
+    setReplayLibraryError(null);
+    try {
+      const response = await fetch(`/api/replays?id=${encodeURIComponent(runId)}&compact=1`);
+      if (!response.ok) throw new Error("Could not load this replay.");
+      const detail = await response.json() as ReplayDetail;
+      const frames = buildReplayFrames(detail);
+      setPlaybackFrames(frames);
+      setPlaybackIndex(0);
+    } catch (error) {
+      setPlaybackFrames([]);
+      setReplayLibraryError(error instanceof Error ? error.message : "Could not load this replay.");
+    } finally {
+      setIsReplayLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isReplayPlaying || playbackFrames.length < 2) return undefined;
+    if (playbackIndex >= playbackFrames.length - 1) {
+      setIsReplayPlaying(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(
+      () => setPlaybackIndex((index) => Math.min(index + 1, playbackFrames.length - 1)),
+      700 / playbackSpeed,
+    );
+    return () => window.clearTimeout(timer);
+  }, [isReplayPlaying, playbackFrames.length, playbackIndex, playbackSpeed]);
 
   const step = useCallback(async () => {
     if (isThinking || game.status === "won") return;
@@ -553,6 +767,9 @@ function App() {
   function newMaze() {
     finishReplay(replayRunIdRef.current, "abandoned");
     setAutoRun(false);
+    setSelectedReplayId("");
+    setPlaybackFrames([]);
+    setIsReplayPlaying(false);
     setAgentError(null);
     const next = makeInitialGame();
     setGame(next);
@@ -576,11 +793,17 @@ function App() {
     } catch (error) { setAgentError(error instanceof Error ? error.message : "Could not export this replay."); }
   }
 
-  const statusLabel = game.status === "won" ? "Exit found" : game.status === "ready" ? "Ready" : "Exploring";
-  const statusTone = game.status === "won" ? "success" : game.status === "ready" ? "idle" : "live";
-  const lastThought = game.history.at(-1);
+  const playbackFrame = playbackFrames[playbackIndex] ?? null;
+  const isReplayMode = Boolean(selectedReplayId && playbackFrame);
+  const displayGame = playbackFrame?.game ?? game;
+  const selectedReplay = replayRuns.find((run) => run.id === selectedReplayId) ?? null;
+  const statusLabel = isReplayMode
+    ? `Replay · ${selectedReplay?.status ?? "recorded"}`
+    : displayGame.status === "won" ? "Exit found" : displayGame.status === "ready" ? "Ready" : "Exploring";
+  const statusTone = displayGame.status === "won" ? "success" : displayGame.status === "ready" ? "idle" : "live";
+  const lastThought = displayGame.history.at(-1);
   const reportedPosition = lastThought?.believedPosition ?? { x: 0, y: 0 };
-  const expectedReportedPosition = relativePositionAtObservation(game.history, game.history.length - 1);
+  const expectedReportedPosition = relativePositionAtObservation(displayGame.history, displayGame.history.length - 1);
   const coordinateIsConsistent = reportedPosition.x === expectedReportedPosition.x && reportedPosition.y === expectedReportedPosition.y;
 
   return (
@@ -603,14 +826,14 @@ function App() {
 
       <section className="control-bar">
         <div className="control-info">
-          <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {game.maze.seed}</span><span className="run-separator">/</span><span>optimal {game.maze.routeLength} steps</span><span className="run-separator">/</span><span className={`replay-state replay-${replayStatus}`}>replay {replayStatus}</span></div>
-          <div className="phase-track" aria-label="Turn phases"><span className={game.phase === "walker_think" ? "is-active" : ""}>1 · Observe & reason</span><i>→</i><span className={game.phase === "walker_move" ? "is-active" : ""}>2 · Move & remember outcome</span></div>
+          <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {displayGame.maze.seed}</span><span className="run-separator">/</span><span>optimal {displayGame.maze.routeLength} steps</span><span className="run-separator">/</span><span className={`replay-state replay-${replayStatus}`}>{isReplayMode ? `frame ${playbackIndex + 1}/${playbackFrames.length}` : `replay ${replayStatus}`}</span></div>
+          <div className="phase-track" aria-label="Turn phases"><span className={displayGame.phase === "walker_think" ? "is-active" : ""}>1 · Observe & reason</span><i>→</i><span className={displayGame.phase === "walker_move" ? "is-active" : ""}>2 · Move & remember outcome</span></div>
         </div>
         <div className="control-actions">
-          <span className="turn-counter"><strong>{String(game.turn).padStart(2, "0")}</strong> turns</span>
+          <span className="turn-counter"><strong>{String(displayGame.turn).padStart(2, "0")}</strong> turns</span>
           <button className="button button-export" onClick={() => void exportReplay()} disabled={!replayRunId || replayStatus === "starting"}>Export replay</button>
-          <button className="button button-step" onClick={() => void step()} disabled={game.status === "won" || isThinking}>{isThinking ? "Walker thinking…" : game.phase === "walker_think" ? "Ask Walker" : "Move Walker"} <span>→</span></button>
-          <button className={`button button-run ${autoRun ? "is-running" : ""}`} onClick={() => setAutoRun((value) => !value)} disabled={game.status === "won"}><span className="play-icon">{autoRun ? "Ⅱ" : "▶"}</span>{autoRun ? "Pause" : "Auto-run"}</button>
+          <button className="button button-step" onClick={() => void step()} disabled={isReplayMode || game.status === "won" || isThinking}>{isThinking ? "Walker thinking…" : game.phase === "walker_think" ? "Ask Walker" : "Move Walker"} <span>→</span></button>
+          <button className={`button button-run ${autoRun ? "is-running" : ""}`} onClick={() => setAutoRun((value) => !value)} disabled={isReplayMode || game.status === "won"}><span className="play-icon">{autoRun ? "Ⅱ" : "▶"}</span>{autoRun ? "Pause" : "Auto-run"}</button>
         </div>
       </section>
 
@@ -623,7 +846,7 @@ function App() {
             <span className="visibility-tag">FULL RUN HISTORY</span>
           </div>
           <div className="thought-disclaimer">A concise explanation Walker provides each turn—not the model&apos;s hidden chain of thought.</div>
-          <ThoughtStream history={game.history} isThinking={isThinking} />
+          <ThoughtStream history={displayGame.history} isThinking={!isReplayMode && isThinking} />
         </article>
 
         <article className="agent-card walker-card">
@@ -640,11 +863,11 @@ function App() {
             <span>{showFullMap ? "Full maze for the observer" : "What the agent can see now"}</span>
             <span>{showFullMap ? "Hidden from Walker" : "Walls hide everything beyond them"}</span>
           </div>
-          <MazeViewport game={game} showFullMap={showFullMap} />
+          <MazeViewport game={displayGame} showFullMap={showFullMap} />
           <div className="action-readout">
-            <div><span className="readout-label">LAST ACTION</span><strong>{game.lastAction ? `Move ${DIRECTIONS.find((item) => item.key === game.lastAction)?.label}` : "—"}</strong></div>
-            <div><span className="readout-label">OUTCOME</span><strong className={game.lastResult === "blocked" ? "blocked-text" : "match"}>{game.lastResult === "blocked" ? "Blocked" : game.lastResult === "moved" ? "Move succeeded" : "Not started"}</strong></div>
-            <div><span className="readout-label">COLLISIONS</span><strong>{String(game.collisions).padStart(2, "0")}</strong></div>
+            <div><span className="readout-label">LAST ACTION</span><strong>{displayGame.lastAction ? `Move ${DIRECTIONS.find((item) => item.key === displayGame.lastAction)?.label}` : "—"}</strong></div>
+            <div><span className="readout-label">OUTCOME</span><strong className={displayGame.lastResult === "blocked" ? "blocked-text" : "match"}>{displayGame.lastResult === "blocked" ? "Blocked" : displayGame.lastResult === "moved" ? "Move succeeded" : "Not started"}</strong></div>
+            <div><span className="readout-label">COLLISIONS</span><strong>{String(displayGame.collisions).padStart(2, "0")}</strong></div>
           </div>
           <div className="coordinate-readout">
             <span className="readout-label">WALKER&apos;S BELIEVED COORDINATE</span>
@@ -654,6 +877,72 @@ function App() {
             <em>{lastThought ? (coordinateIsConsistent ? "coordinate consistent" : "coordinate drift detected") : "origin"}</em>
           </div>
         </article>
+      </section>
+
+      <section className="replay-console" aria-label="Saved replay controls">
+        <div className="replay-console-head">
+          <div><PanelLabel>REPLAY LIBRARY</PanelLabel><h2>Review any recorded run</h2></div>
+          <div className="replay-head-actions">
+            <span>{replayRuns.length} saved runs</span>
+            <button className="button replay-refresh" type="button" onClick={() => void refreshReplayRuns()}>Refresh</button>
+          </div>
+        </div>
+        <div className="replay-controls">
+          <label className="replay-field replay-run-field">
+            <span>RUN</span>
+            <select value={selectedReplayId} onChange={(event) => void loadReplay(event.target.value)} disabled={isReplayLoading}>
+              <option value="">Live game</option>
+              {replayRuns.map((run) => (
+                <option value={run.id} key={run.id}>
+                  {run.maze_seed} · {run.status.toUpperCase()} · {run.max_turn ?? 0} turns{run.had_error ? " · error logged" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="replay-field replay-speed-field">
+            <span>SPEED</span>
+            <select value={playbackSpeed} onChange={(event) => setPlaybackSpeed(Number(event.target.value) as PlaybackSpeed)}>
+              <option value={0.5}>0.5×</option>
+              <option value={1}>1×</option>
+              <option value={2}>2×</option>
+              <option value={4}>4×</option>
+              <option value={8}>8×</option>
+            </select>
+          </label>
+          <div className="replay-buttons">
+            <button className="button replay-restart" type="button" disabled={!isReplayMode || isReplayLoading} onClick={() => { setPlaybackIndex(0); setIsReplayPlaying(false); }}>↺ Restart</button>
+            <button
+              className={`button replay-play ${isReplayPlaying ? "is-playing" : ""}`}
+              type="button"
+              disabled={!isReplayMode || isReplayLoading || playbackFrames.length < 2}
+              onClick={() => {
+                if (!isReplayPlaying && playbackIndex >= playbackFrames.length - 1) setPlaybackIndex(0);
+                setIsReplayPlaying((value) => !value);
+              }}
+            >
+              {isReplayLoading ? "Loading…" : isReplayPlaying ? "Ⅱ Pause" : "▶ Play"}
+            </button>
+          </div>
+        </div>
+        <div className="replay-timeline">
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, playbackFrames.length - 1)}
+            value={Math.min(playbackIndex, Math.max(0, playbackFrames.length - 1))}
+            onChange={(event) => { setPlaybackIndex(Number(event.target.value)); setIsReplayPlaying(false); }}
+            disabled={!isReplayMode || playbackFrames.length < 2}
+            aria-label="Replay position"
+          />
+          <div className="replay-timeline-meta">
+            <span>{isReplayMode ? `${playbackIndex + 1} / ${playbackFrames.length}` : "Select a run to begin"}</span>
+            <strong className={playbackFrame?.error ? "has-error" : selectedReplay?.status === "won" ? "is-won" : ""}>
+              {playbackFrame?.error ?? playbackFrame?.note ?? "All outcomes are available for replay"}
+            </strong>
+            {isReplayMode ? <button type="button" onClick={() => void loadReplay("")}>Return to live game</button> : <span />}
+          </div>
+        </div>
+        {replayLibraryError ? <p className="replay-library-error">{replayLibraryError}</p> : null}
       </section>
 
       <footer className="footer-note"><span>solo walker experiment</span><span>conversation-only memory · no map · no route tool · minimum optimal route {MIN_ROUTE_LENGTH}</span><span>echo / maze</span></footer>
