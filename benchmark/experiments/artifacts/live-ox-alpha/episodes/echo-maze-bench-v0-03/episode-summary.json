@@ -1,0 +1,53 @@
+{
+  "status": "invalid_output",
+  "reason": "Model chose visibly blocked direction \"down\".",
+  "turns": 2,
+  "wallClockMs": 15970,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-03",
+    "status": "invalid_output",
+    "reason": "Model chose visibly blocked direction \"down\".",
+    "solved": false,
+    "attemptedTurns": 2,
+    "validActions": 1,
+    "successfulMoves": 1,
+    "wallHits": 0,
+    "invalidResponses": 1,
+    "apiFailures": 0,
+    "retryAttempts": 0,
+    "optimalPathLength": 24,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 7496,
+      "p95": 8471,
+      "max": 8471,
+      "total": 15967,
+      "samples": 2
+    },
+    "tokens": {
+      "inputTokens": 1750,
+      "outputTokens": 414,
+      "reasoningTokens": 0,
+      "totalTokens": 2164,
+      "providerRaw": [
+        {
+          "input_tokens": 727,
+          "output_tokens": 188,
+          "total_tokens": 915,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 1023,
+          "output_tokens": 226,
+          "total_tokens": 1249,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        }
+      ]
+    }
+  }
+}
