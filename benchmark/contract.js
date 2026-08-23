@@ -44,6 +44,7 @@ export const MODEL_ALLOWLIST = [
   "openai/gpt-5.6-luna",
   "stealth/ox-alpha",
   "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "deepseek/deepseek-v4-flash-0731",
 ];
 export const DEFAULT_MODEL = "gpt-5.6-luna";
 
@@ -62,14 +63,14 @@ export const PROVIDERS = {
 };
 
 export const MAX_TURNS = 120;
-export const TIMEOUT_MS = 90_000;
+export const TIMEOUT_MS = 180_000;
 /** Transport-level attempts per turn for retryable failures only. */
 export const MAX_ATTEMPTS_PER_TURN = 2;
 export const MAX_OUTPUT_TOKENS_BASE = 2000;
 export const REASONING_EFFORT = "low";
 
 export const RETRY_POLICY =
-  "Transport failures (timeout, network error, HTTP 408/409/429/5xx, unreadable API response with 5xx, " +
+  "Transport failures (timeout (180s), network error, HTTP 408/409/429/5xx, unreadable API response with 5xx, " +
   "incomplete or missing output) are retried up to 2 attempts per turn with exponential backoff honoring " +
   "Retry-After, plus fixed inter-request pacing; every attempt is recorded. " +
   "Invalid model output (unparseable JSON, schema violation, refusal) and a chosen direction that is " +
