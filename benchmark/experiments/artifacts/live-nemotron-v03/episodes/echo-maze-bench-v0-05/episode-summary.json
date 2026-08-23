@@ -1,0 +1,93 @@
+{
+  "status": "api_failure",
+  "reason": "Turn failed after 2 attempt(s); last category: incomplete_output.",
+  "turns": 6,
+  "wallClockMs": 305421,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-05",
+    "status": "api_failure",
+    "reason": "Turn failed after 2 attempt(s); last category: incomplete_output.",
+    "solved": false,
+    "attemptedTurns": 6,
+    "validActions": 5,
+    "successfulMoves": 5,
+    "wallHits": 0,
+    "invalidResponses": 0,
+    "apiFailures": 1,
+    "retryAttempts": 1,
+    "optimalPathLength": 36,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 40083,
+      "p95": 79080,
+      "max": 79080,
+      "total": 286895,
+      "samples": 7
+    },
+    "tokens": {
+      "inputTokens": 12568,
+      "outputTokens": 11369,
+      "reasoningTokens": 6805,
+      "totalTokens": 23937,
+      "providerRaw": [
+        {
+          "input_tokens": 702,
+          "output_tokens": 514,
+          "total_tokens": 1216,
+          "output_tokens_details": {
+            "reasoning_tokens": 372
+          }
+        },
+        {
+          "input_tokens": 1010,
+          "output_tokens": 938,
+          "total_tokens": 1948,
+          "output_tokens_details": {
+            "reasoning_tokens": 650
+          }
+        },
+        {
+          "input_tokens": 1408,
+          "output_tokens": 1072,
+          "total_tokens": 2480,
+          "output_tokens_details": {
+            "reasoning_tokens": 766
+          }
+        },
+        {
+          "input_tokens": 1850,
+          "output_tokens": 1014,
+          "total_tokens": 2864,
+          "output_tokens_details": {
+            "reasoning_tokens": 710
+          }
+        },
+        {
+          "input_tokens": 2270,
+          "output_tokens": 1831,
+          "total_tokens": 4101,
+          "output_tokens_details": {
+            "reasoning_tokens": 1438
+          }
+        },
+        {
+          "input_tokens": 2664,
+          "output_tokens": 2000,
+          "total_tokens": 4664,
+          "output_tokens_details": {
+            "reasoning_tokens": 1686
+          }
+        },
+        {
+          "input_tokens": 2664,
+          "output_tokens": 4000,
+          "total_tokens": 6664,
+          "output_tokens_details": {
+            "reasoning_tokens": 1183
+          }
+        }
+      ]
+    }
+  }
+}
