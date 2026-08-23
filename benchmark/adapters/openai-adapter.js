@@ -22,6 +22,8 @@ import {
   TIMEOUT_MS,
   WALKER_PROMPT,
 } from "../contract.js";
+import { extractJsonObject } from "./json-extract.js";
+import { normalizeDecisionFields } from "./decision-normalize.js";
 
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
 
@@ -153,7 +155,7 @@ export function createOpenAIAdapter(apiKey, options = {}) {
       }
 
       try {
-        const parsed = JSON.parse(output.text);
+        const parsed = normalizeDecisionFields(extractJsonObject(output.text));
         const problem = validateParsed(parsed);
         if (problem) {
           attempts.push({ ...base, errorCategory: problem, rawOutputPreview: output.text.slice(0, 240) });

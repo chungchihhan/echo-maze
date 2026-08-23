@@ -38,6 +38,9 @@ import {
 import { runEpisode } from "../benchmark/episode.js";
 import { createMockAdapter } from "../benchmark/adapters/mock-adapter.js";
 import { createOpenAIAdapter, extractOutputText, validateParsed } from "../benchmark/adapters/openai-adapter.js";
+import { createOpenRouterAdapter } from "../benchmark/adapters/openrouter-adapter.js";
+import { extractJsonObject } from "../benchmark/adapters/json-extract.js";
+import { normalizeDecisionFields } from "../benchmark/adapters/decision-normalize.js";
 import {
   computeBatchLatency,
   computeBatchMetrics,
@@ -114,7 +117,12 @@ test("v0 fixtures are intact, unique, and BFS-verified", async () => {
   assert.equal(SCHEMA_HASH, sha256(RESPONSE_SCHEMA));
   assert.equal(PROMPT_HASH, sha256(WALKER_PROMPT));
   assert.notEqual(PROMPT_HASH, SCHEMA_HASH);
-  assert.deepEqual(MODEL_ALLOWLIST, ["gpt-5.6-luna", "openai/gpt-5.6-luna", "stealth/ox-alpha"]);
+  assert.deepEqual(MODEL_ALLOWLIST, [
+    "gpt-5.6-luna",
+    "openai/gpt-5.6-luna",
+    "stealth/ox-alpha",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+  ]);
 });
 
 test("policy v0.1: a visibly blocked direction is a wall hit, not a termination", async () => {
@@ -259,6 +267,29 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
   }
 });
 
+test("tolerant JSON extraction (policy v0.2) parses formatting, never content", () => {
+  const good = JSON.stringify({ observation_summary: "s", direction: "up" });
+  assert.deepEqual(extractJsonObject(good), JSON.parse(good));
+  assert.deepEqual(
+    extractJsonObject("```json\n" + good + "\n```"),
+    JSON.parse(good),
+    "fenced JSON must parse",
+  );
+  assert.deepEqual(
+    extractJsonObject("Let me think. We are at turn 2.\n\n" + good + "\nI hope this helps."),
+    JSON.parse(good),
+    "prose-wrapped JSON must extract",
+  );
+  // Strings containing braces must not confuse the scanner.
+  assert.deepEqual(
+    extractJsonObject('note: use { or } carefully ' + good),
+    JSON.parse(good),
+  );
+  // Truncated / malformed JSON still fails — nothing is repaired.
+  assert.throws(() => extractJsonObject('{"a": 1, "b": [1, 2'));
+  assert.throws(() => extractJsonObject('no json here at all'));
+});
+
 test("OpenAI adapter records attempts and never repairs invalid output", async () => {
   // Offline validation helpers.
   assert.equal(validateParsed({ observation_summary: "s", reasoning_summary: "r", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up" }), null);
@@ -313,6 +344,55 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
 
   // Missing API key fails fast and never leaks the key into errors.
   assert.throws(() => createOpenAIAdapter(""));
+});
+
+test("field normalization (policy v0.4) re-keys aliases without inventing content", () => {
+  assert.deepEqual(
+    normalizeDecisionFields({ observation_summary: "s", reasoning: "r", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up" }),
+    { observation_summary: "s", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up", reasoning_summary: "r" },
+  );
+  assert.deepEqual(
+    normalizeDecisionFields({ observationSummary: "s", reasoningSummary: "r", coordinateNote: "c", believedPosition: { x: 1, y: 2 }, move: "left" }),
+    { observation_summary: "s", reasoning_summary: "r", coordinate_note: "c", believed_position: { x: 1, y: 2 }, direction: "left" },
+  );
+  // Canonical field wins over alias.
+  const both = normalizeDecisionFields({ reasoning_summary: "canonical", reasoning: "alias" });
+  assert.equal(both.reasoning_summary, "canonical");
+  // Missing content still fails validation after normalization.
+  assert.equal(validateParsed(normalizeDecisionFields({ reasoning: "r" })), "schema_violation");
+  // Non-objects pass through untouched.
+  assert.deepEqual(normalizeDecisionFields(null), null);
+});
+
+test("OpenRouter adapter retries length-truncated output with doubled budget", async () => {
+  /** @type {any[]} */
+  const bodies = [];
+  const good = JSON.stringify({
+    observation_summary: "s", reasoning_summary: "r", coordinate_note: "c",
+    believed_position: { x: 0, y: 0 }, direction: "up",
+  });
+  const fetchImpl = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    bodies.push(body);
+    if (bodies.length === 1) {
+      return new Response(JSON.stringify({
+        id: "gen_1", model: "m", usage: { prompt_tokens: 10, completion_tokens: 900, total_tokens: 910 },
+        choices: [{ finish_reason: "length", message: { role: "assistant", content: '{"observation_summary":' } }],
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      id: "gen_2", model: "m", usage: { prompt_tokens: 10, completion_tokens: 50, total_tokens: 60 },
+      choices: [{ finish_reason: "stop", message: { role: "assistant", content: good } }],
+    }), { status: 200 });
+  };
+  const adapter = createOpenRouterAdapter("test-key-not-a-secret", { fetchImpl, timeoutMs: 1000 });
+  const result = await adapter({ turn: 1, observation: {}, conversation: [] });
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].max_tokens, 2000);
+  assert.equal(bodies[1].max_tokens, 4000);
+  assert.equal(result.attempts[0].errorCategory, "incomplete_output");
+  assert.equal(result.error, null);
+  assert.equal(result.parsed.direction, "up");
 });
 
 test("mock adapter state cannot leak across episodes", async () => {
