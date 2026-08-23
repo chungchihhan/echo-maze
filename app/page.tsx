@@ -945,7 +945,7 @@ function App() {
         {replayLibraryError ? <p className="replay-library-error">{replayLibraryError}</p> : null}
       </section>
 
-      <footer className="footer-note"><span>solo walker experiment</span><span>conversation-only memory · no map · no route tool · minimum optimal route {MIN_ROUTE_LENGTH}</span><span>echo / maze</span></footer>
+      <footer className="footer-note"><span>solo walker</span><span>conversation-only memory · no map · no route tool · minimum optimal route {MIN_ROUTE_LENGTH}</span><span>echo / maze</span></footer>
     </main>
   );
 }
