@@ -1,4 +1,22 @@
-# AGENTS.md
+# Echo Maze repository guidance
+
+## First pass
+
+1. Identify the module that owns the requested behavior.
+2. Read that module's `AGENTS.md` before broad exploration or edits; for API work, read both `app/AGENTS.md` and `app/api/AGENTS.md`.
+3. Start from the module's listed entrypoints and run its narrowest checks before broader repository validation.
+
+## Module map
+
+| Path | Responsibility | Read next |
+| --- | --- | --- |
+| `app/` | Browser UI, Solo Walker presentation loop, layout, and styling | `app/AGENTS.md` |
+| `app/api/` | Server-only agent and replay HTTP routes | `app/api/AGENTS.md` |
+| `lib/maze/` | Pure maze core shared by UI and benchmark (types, generation, movement, observation, pathfinding) | `lib/AGENTS.md` |
+| `benchmark/` | Headless benchmark pipeline: contract, fixtures, adapters, runner, metrics, verification | `benchmark/AGENTS.md` |
+| `db/` | Drizzle schema and Cloudflare D1 client boundary | `db/AGENTS.md` |
+| `worker/` | Cloudflare Worker runtime entrypoint and request handoff | `worker/AGENTS.md` |
+| `tests/` | Rendered HTML/source contract tests plus offline benchmark tests | `tests/AGENTS.md` |
 
 ## Project intent
 
@@ -27,16 +45,6 @@ or hidden game state.
 - Record both successful and failed runs so they can be replayed.
 - Keep all user-facing interface text in English unless asked otherwise.
 
-## Repository map
-
-- Main interface and game loop: `app/page.tsx`
-- Styles: `app/globals.css`
-- OpenAI agent route: `app/api/agent/route.ts`
-- Replay API: `app/api/replays/route.ts`
-- D1 schema: `db/schema.ts`
-- Cloudflare Worker entry: `worker/index.ts`
-- Hosting bindings: `.openai/hosting.json`
-
 ## Working rules
 
 - Preserve the existing Vinext, Vite, Cloudflare Worker, and npm structure.
@@ -54,9 +62,10 @@ or hidden game state.
 Run checks in proportion to the change:
 
 ```bash
+npm run lint
 npm run build
 npm test
-npm run lint
+npm run benchmark:verify     # required for any change under lib/ or benchmark/
 ```
 
 For documentation-only changes, inspect links and `git diff`; a production build
