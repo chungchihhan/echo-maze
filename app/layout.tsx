@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Echo Maze — Observable Agent Cooperation",
-  description: "A two-agent navigation experiment about shared maps, local views, and language.",
+  description: "An AI Walker navigating a hidden maze through observation, memory, and self-maintained coordinates.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
