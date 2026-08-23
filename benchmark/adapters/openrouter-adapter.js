@@ -23,6 +23,8 @@ import {
   TIMEOUT_MS,
   WALKER_PROMPT,
 } from "../contract.js";
+import { extractJsonObject } from "./json-extract.js";
+import { normalizeDecisionFields } from "./decision-normalize.js";
 const CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /** Backoff before a retry: honors Retry-After (seconds) else exponential. */
@@ -151,6 +153,13 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
 
       const choice = (body.choices ?? [])[0];
       const message = choice?.message ?? {};
+      // A response cut off by the token budget is a budget event, not invalid
+      // output: retry once with the doubled budget before giving up.
+      if (!message.refusal && choice?.finish_reason === "length") {
+        attempts.push({ ...base, errorCategory: "incomplete_output" });
+        await retryDelay(response.headers.get("retry-after"), attempt);
+        continue;
+      }
       if (message.refusal) {
         attempts.push({
           ...base,
@@ -168,7 +177,7 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
       }
 
       try {
-        const parsed = JSON.parse(text);
+        const parsed = normalizeDecisionFields(extractJsonObject(text));
         // Reuse the shared structural validation from the OpenAI adapter.
         const { validateParsed } = await import("./openai-adapter.js");
         const problem = validateParsed(parsed);

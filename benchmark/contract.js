@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
 
 export const BENCHMARK_VERSION = "v0";
-export const POLICY_REVISION = "v0.1";
+export const POLICY_REVISION = "v0.4";
 export const GENERATOR_VERSION = "maze-gen-1";
 export const OBSERVATION_VERSION = "corridor-sightline-v1";
 
@@ -39,7 +39,12 @@ export const FIXTURE_IDS = FIXTURE_SEEDS.map(
 );
 
 /** Models permitted in benchmark runs (exact provider model IDs). */
-export const MODEL_ALLOWLIST = ["gpt-5.6-luna", "openai/gpt-5.6-luna", "stealth/ox-alpha"];
+export const MODEL_ALLOWLIST = [
+  "gpt-5.6-luna",
+  "openai/gpt-5.6-luna",
+  "stealth/ox-alpha",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+];
 export const DEFAULT_MODEL = "gpt-5.6-luna";
 
 /** Supported API providers. */
@@ -60,7 +65,7 @@ export const MAX_TURNS = 120;
 export const TIMEOUT_MS = 90_000;
 /** Transport-level attempts per turn for retryable failures only. */
 export const MAX_ATTEMPTS_PER_TURN = 2;
-export const MAX_OUTPUT_TOKENS_BASE = 900;
+export const MAX_OUTPUT_TOKENS_BASE = 2000;
 export const REASONING_EFFORT = "low";
 
 export const RETRY_POLICY =
@@ -173,6 +178,18 @@ export const RULES = {
     "Policy v0.1: a parsed decision naming a visibly blocked direction is recorded as an attempted move " +
     "with result \"blocked\" (wall hit), consuming the turn. The episode continues; the behavior is never " +
     "repaired or retried within the turn.",
+  outputExtractionPolicy:
+    "Policy v0.2: response parsing is tolerant of formatting, not of content. If the whole response is not " +
+    "JSON, markdown fences are stripped and/or the first complete brace-balanced {...} object is extracted. " +
+    "Answer content is never altered; malformed JSON still fails as invalid_structured_json.",
+  outputTokenBudgetPolicy:
+    "Policy v0.3: max output tokens raised 900 -> 2000 so verbose reasoning models can finish their JSON " +
+    "answer; responses ending on the length limit are categorized as incomplete_output and retried once " +
+    "with a doubled budget before counting as an episode-level failure.",
+  fieldNormalizationPolicy:
+    "Policy v0.4: well-formed decisions under unambiguous field aliases (e.g. reasoning -> reasoning_summary, " +
+    "believedPosition -> believed_position) are re-keyed to the canonical schema before validation. Canonical " +
+    "fields always win; values are never invented; decisions missing required content still fail.",
   scoring: {
     pathEfficiency: "optimalPathLength / successfulMoves for solved episodes; null for unsolved episodes",
     spl: "success * optimalPathLength / max(optimalPathLength, successfulMoves)",
