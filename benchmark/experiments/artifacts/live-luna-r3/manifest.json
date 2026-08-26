@@ -34,6 +34,7 @@
   "schemaHash": "0e94fdaa32bdcba1a721c9de07d1e43ebfe363fb5444e2fb2fb18ab4da4f86ef",
   "rulesHash": "569d57de97ab17eb42479a18f0b3bfdd12a5135c06ae859deddaf43886d0f4d4",
   "mode": "live",
+  "resultClass": "exploratory",
   "provider": "openrouter",
   "apiEndpoint": "https://openrouter.ai/api/v1/chat/completions",
   "modelRequested": "openai/gpt-5.6-luna",

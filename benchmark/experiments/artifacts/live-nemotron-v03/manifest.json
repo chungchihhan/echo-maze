@@ -36,6 +36,7 @@
   "schemaHash": "0e94fdaa32bdcba1a721c9de07d1e43ebfe363fb5444e2fb2fb18ab4da4f86ef",
   "rulesHash": "843edd95ed5399fb4ca2a2c90ef3f27bc29d6af915bdb6d9e4ff4264e77eb063",
   "mode": "live",
+  "resultClass": "exploratory",
   "provider": "openrouter",
   "apiEndpoint": "https://openrouter.ai/api/v1/chat/completions",
   "modelRequested": "nvidia/nemotron-3-ultra-550b-a55b:free",

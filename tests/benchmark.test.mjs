@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -39,6 +39,7 @@ import { runEpisode } from "../benchmark/episode.js";
 import { createMockAdapter } from "../benchmark/adapters/mock-adapter.js";
 import { createOpenAIAdapter, extractOutputText, validateParsed } from "../benchmark/adapters/openai-adapter.js";
 import { createOpenRouterAdapter } from "../benchmark/adapters/openrouter-adapter.js";
+import { computeRetryDelayMs, retryDelay } from "../benchmark/adapters/retry-delay.js";
 import { extractJsonObject } from "../benchmark/adapters/json-extract.js";
 import { normalizeDecisionFields } from "../benchmark/adapters/decision-normalize.js";
 import {
@@ -241,7 +242,13 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
     const manifest = JSON.parse(await readFile(path.join(batchDir, "manifest.json"), "utf8"));
     assert.equal(manifest.benchmarkVersion, "v0");
     assert.equal(manifest.modelRequested, "gpt-5.6-luna");
+    assert.equal(manifest.modelReturned, "mock-explorer");
+    assert.deepEqual(manifest.modelsReturned, ["mock-explorer"]);
+    assert.equal(manifest.resultClass, "exploratory");
     assert.equal(manifest.commit, "test-commit");
+    assert.equal(typeof manifest.dirty, "boolean");
+    assert.match(manifest.sourceHash, /^[0-9a-f]{64}$/);
+    assert.match(manifest.diffHash, /^[0-9a-f]{64}$/);
     assert.equal(manifest.maxTurns, MAX_TURNS);
     assert.ok(manifest.fixtureOrder.length === 10);
     assert.ok(manifest.promptHash && manifest.schemaHash && manifest.rulesHash && manifest.fixtureSetHash);
@@ -249,9 +256,18 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
     // Summaries must be regenerable from raw artifacts alone.
     const regenerated = await regenerateSummary(batchDir);
     assert.equal(regenerated.solved, summary.solved);
+    assert.equal(regenerated.resultClass, "exploratory");
     assert.equal(regenerated.successRate, summary.successRate);
     assert.deepEqual(regenerated.totals, summary.totals);
     assert.deepEqual(regenerated.latency, summary.latency);
+
+    // Actual model identity is derived from raw attempts, not trusted from a
+    // potentially stale requested-model field in the manifest.
+    const tamperedManifest = { ...manifest, modelReturned: "wrong-model", modelsReturned: ["wrong-model"] };
+    await writeFile(path.join(batchDir, "manifest.json"), `${JSON.stringify(tamperedManifest, null, 2)}\n`);
+    const modelRegenerated = await regenerateSummary(batchDir);
+    assert.equal(modelRegenerated.modelReturned, "mock-explorer");
+    assert.deepEqual(modelRegenerated.modelsReturned, ["mock-explorer"]);
 
     // Episode isolation: each transcript belongs to exactly one fixture.
     for (const fixtureId of FIXTURE_IDS) {
@@ -292,8 +308,13 @@ test("tolerant JSON extraction (policy v0.2) parses formatting, never content", 
 
 test("OpenAI adapter records attempts and never repairs invalid output", async () => {
   // Offline validation helpers.
-  assert.equal(validateParsed({ observation_summary: "s", reasoning_summary: "r", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up" }), null);
+  const validDecision = { observation_summary: "s", reasoning_summary: "r", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up" };
+  assert.equal(validateParsed(validDecision), null);
   assert.equal(validateParsed({ direction: "sideways" }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, observation_summary: "x".repeat(221) }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, believed_position: { x: 101, y: 0 } }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, extra: true }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, believed_position: { x: 0, y: 0, extra: true } }), "schema_violation");
   assert.deepEqual(extractOutputText({ output_text: "{\"a\":1}" }), { text: "{\"a\":1}", refusal: null });
   assert.deepEqual(extractOutputText({ output: [{ content: [{ type: "refusal", refusal: "no" }] }] }), { text: null, refusal: "no" });
 
@@ -316,7 +337,11 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
       }),
     }), { status: 200, headers: { "x-request-id": "req_1" } });
   };
-  const adapter = createOpenAIAdapter("test-key-not-a-secret", { fetchImpl, timeoutMs: 1000 });
+  const adapter = createOpenAIAdapter("test-key-not-a-secret", {
+    fetchImpl,
+    timeoutMs: 1000,
+    retryDelayImpl: async () => {},
+  });
   const result = await adapter({ turn: 1, observation: {}, conversation: [] });
   assert.equal(calls.length, 2);
   assert.equal(result.attempts.length, 2);
@@ -360,8 +385,94 @@ test("field normalization (policy v0.4) re-keys aliases without inventing conten
   assert.equal(both.reasoning_summary, "canonical");
   // Missing content still fails validation after normalization.
   assert.equal(validateParsed(normalizeDecisionFields({ reasoning: "r" })), "schema_violation");
+  const unknown = normalizeDecisionFields({
+    observation_summary: "s",
+    reasoning_summary: "r",
+    coordinate_note: "c",
+    believed_position: { x: 0, y: 0 },
+    direction: "up",
+    extra: true,
+  });
+  assert.equal(unknown.extra, true);
+  assert.equal(validateParsed(unknown), "schema_violation");
   // Non-objects pass through untouched.
   assert.deepEqual(normalizeDecisionFields(null), null);
+});
+
+test("OpenAI adapter forwards requested model and doubles incomplete-output budget", async () => {
+  /** @type {any[]} */
+  const bodies = [];
+  /** @type {any[]} */
+  const delays = [];
+  const requestedModel = "openai/gpt-5.6-luna";
+  const good = JSON.stringify({
+    observation_summary: "s", reasoning_summary: "r", coordinate_note: "c",
+    believed_position: { x: 0, y: 0 }, direction: "up",
+  });
+  const fetchImpl = async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    if (bodies.length === 1) {
+      return new Response(JSON.stringify({ id: "resp_1", status: "incomplete", model: "actual-model-a" }), {
+        status: 200,
+        headers: { "retry-after": "0" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_2", status: "completed", model: "actual-model-b", output_text: good,
+    }), { status: 200 });
+  };
+  const adapter = createOpenAIAdapter("test-key-not-a-secret", {
+    fetchImpl,
+    model: requestedModel,
+    timeoutMs: 1000,
+    retryDelayImpl: async (...args) => delays.push(args),
+  });
+  const result = await adapter({ turn: 1, observation: {}, conversation: [] });
+
+  assert.deepEqual(bodies.map((body) => body.model), [requestedModel, requestedModel]);
+  assert.deepEqual(bodies.map((body) => body.max_output_tokens), [2000, 4000]);
+  assert.deepEqual(result.attempts.map((attempt) => attempt.modelReturned), ["actual-model-a", "actual-model-b"]);
+  assert.equal(result.attempts[0].modelRequested, requestedModel);
+  assert.equal(delays.length, 1);
+  assert.equal(delays[0][0], "0");
+  assert.equal(result.error, null);
+});
+
+test("resume refuses incompatible manifests and preserves the original metadata", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "echo-bench-resume-test-"));
+  try {
+    await runBatch({
+      dryRun: true,
+      batchId: "resume-test",
+      outDir: tempDir,
+      commit: "source-a",
+    });
+    const manifestPath = path.join(tempDir, "manifest.json");
+    const before = await readFile(manifestPath, "utf8");
+
+    await assert.rejects(
+      () => runBatch({
+        dryRun: true,
+        outDir: tempDir,
+        resume: true,
+        model: "openai/gpt-5.6-luna",
+        commit: "source-b",
+      }),
+      /manifest is incompatible.*modelRequested/,
+    );
+    assert.equal(await readFile(manifestPath, "utf8"), before);
+
+    const resumed = await runBatch({
+      dryRun: true,
+      outDir: tempDir,
+      resume: true,
+      model: "gpt-5.6-luna",
+      commit: "source-a",
+    });
+    assert.equal(resumed.outcomes.filter((outcome) => outcome.skipped).length, 10);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("OpenRouter adapter retries length-truncated output with doubled budget", async () => {
@@ -385,14 +496,35 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
       choices: [{ finish_reason: "stop", message: { role: "assistant", content: good } }],
     }), { status: 200 });
   };
-  const adapter = createOpenRouterAdapter("test-key-not-a-secret", { fetchImpl, timeoutMs: 1000 });
+  const requestedModel = "openrouter/test-model";
+  const adapter = createOpenRouterAdapter("test-key-not-a-secret", {
+    fetchImpl,
+    model: requestedModel,
+    retryDelayImpl: async () => {},
+    pacingMs: 0,
+    timeoutMs: 1000,
+  });
   const result = await adapter({ turn: 1, observation: {}, conversation: [] });
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].max_tokens, 2000);
   assert.equal(bodies[1].max_tokens, 4000);
   assert.equal(result.attempts[0].errorCategory, "incomplete_output");
+  assert.deepEqual(result.attempts.map((attempt) => attempt.modelRequested), [requestedModel, requestedModel]);
   assert.equal(result.error, null);
   assert.equal(result.parsed.direction, "up");
+});
+
+test("retry policy honors Retry-After and bounded exponential fallback", () => {
+  assert.equal(computeRetryDelayMs("3", 1), 3000);
+  assert.equal(computeRetryDelayMs(null, 2, 2000, 0), 4000);
+  assert.equal(computeRetryDelayMs(null, 10, 2000, 0), 120000);
+});
+
+test("retry delay does not subtract request latency from Retry-After", async () => {
+  /** @type {number[]} */
+  const waits = [];
+  await retryDelay("3", 1, 2000, async (waitMs) => waits.push(waitMs));
+  assert.deepEqual(waits, [3000]);
 });
 
 test("mock adapter state cannot leak across episodes", async () => {

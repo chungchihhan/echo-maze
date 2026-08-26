@@ -6,6 +6,11 @@ revisions, and the failure modes we observed. Pair each entry with the
 policy revision in effect so results are comparable only within the same
 revision.
 
+These archived runs are exploratory records, not official benchmark results:
+they were produced before the clean-source provenance gate and their manifests
+do not fully capture dirty-worktree state. Use the raw transcripts for observed
+behavior, but do not use these batches as a reproducible leaderboard baseline.
+
 Contract: `benchmark/contract.js` (benchmark `v0`). Fixtures are frozen
 snapshots under `benchmark/fixtures/` (10 episodes, maze size 9, optimal
 path 24–44 moves). Raw transcripts/manifests/summaries live under
