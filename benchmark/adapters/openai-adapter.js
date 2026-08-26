@@ -14,7 +14,6 @@ import {
   DEFAULT_MODEL,
   MAX_ATTEMPTS_PER_TURN,
   MAX_OUTPUT_TOKENS_BASE,
-  MODEL_ALLOWLIST,
   OUTPUT_FRAMING,
   REASONING_EFFORT,
   RESPONSE_SCHEMA,
@@ -24,10 +23,11 @@ import {
 } from "../contract.js";
 import { extractJsonObject } from "./json-extract.js";
 import { normalizeDecisionFields } from "./decision-normalize.js";
+import { retryDelay } from "./retry-delay.js";
 
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
 
-/** @typedef {{ attempt: number, latencyMs: number, responseId: string | null, requestId: string | null, modelReturned: string | null, status: string | null, usage: Record<string, unknown> | null, errorCategory: string | null, rawOutputPreview: string | null }} AttemptRecord */
+/** @typedef {{ attempt: number, latencyMs: number, modelRequested: string, responseId: string | null, requestId: string | null, modelReturned: string | null, status: string | null, usage: Record<string, unknown> | null, errorCategory: string | null, rawOutputPreview: string | null }} AttemptRecord */
 
 /**
  * @typedef {{
@@ -39,12 +39,22 @@ const RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 /**
  * @param {string} apiKey
- * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [options]
+ * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, model?: string,
+ *            retryDelayImpl?: typeof retryDelay }} [options]
  */
 export function createOpenAIAdapter(apiKey, options = {}) {
   if (!apiKey) throw new Error("OPENAI_API_KEY is required for live benchmark runs.");
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
+  const model = options.model ?? DEFAULT_MODEL;
+  const retryDelayImpl = options.retryDelayImpl ?? retryDelay;
+
+  async function waitForRetry(response, attempt) {
+    if (attempt >= MAX_ATTEMPTS_PER_TURN) return;
+    const retryAfter = response?.headers?.get("retry-after") ?? null;
+    const baseMs = response?.status === 429 ? 20_000 : 2_000;
+    await retryDelayImpl(retryAfter, attempt, baseMs);
+  }
 
   /**
    * @param {{ turn: number, observation: unknown, conversation: unknown[] }} request
@@ -67,7 +77,7 @@ export function createOpenAIAdapter(apiKey, options = {}) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: DEFAULT_MODEL,
+            model,
             instructions: WALKER_PROMPT,
             input: JSON.stringify({
               turn: request.turn,
@@ -92,11 +102,13 @@ export function createOpenAIAdapter(apiKey, options = {}) {
       } catch (error) {
         const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
         attempts.push({
-          attempt, latencyMs: Date.now() - startedAt, responseId: null, requestId: null,
+          attempt, latencyMs: Date.now() - startedAt, modelRequested: model,
+          responseId: null, requestId: null,
           modelReturned: null, status: null, usage: null,
           errorCategory: timedOut ? "timeout" : "network_error",
           rawOutputPreview: null,
         });
+        await waitForRetry(response, attempt);
         continue; // retryable transport failure
       }
 
@@ -108,17 +120,20 @@ export function createOpenAIAdapter(apiKey, options = {}) {
       } catch {
         const retryable = response.status >= 500;
         attempts.push({
-          attempt, latencyMs: Date.now() - startedAt, responseId: null, requestId,
+          attempt, latencyMs: Date.now() - startedAt, modelRequested: model,
+          responseId: null, requestId,
           modelReturned: null, status: String(response.status), usage: null,
           errorCategory: "invalid_api_response", rawOutputPreview: null,
         });
         if (!retryable) break; // non-retryable
+        await waitForRetry(response, attempt);
         continue;
       }
 
       const base = {
         attempt,
         latencyMs: Date.now() - startedAt,
+        modelRequested: model,
         responseId: body.id ?? null,
         requestId,
         modelReturned: body.model ?? null,
@@ -135,12 +150,17 @@ export function createOpenAIAdapter(apiKey, options = {}) {
           ...base,
           errorCategory: body.error?.code ?? `http_${response.status}`,
         });
-        if (retryable) continue;
+        if (retryable) {
+          await waitForRetry(response, attempt);
+          continue;
+        }
         break;
       }
 
       if (body.status === "incomplete") {
         attempts.push({ ...base, errorCategory: "incomplete_output" });
+        maxOutputTokens *= 2;
+        await waitForRetry(response, attempt);
         continue; // retryable with a larger budget
       }
 
@@ -151,6 +171,7 @@ export function createOpenAIAdapter(apiKey, options = {}) {
       }
       if (!output.text) {
         attempts.push({ ...base, errorCategory: "missing_output_text" });
+        await waitForRetry(response, attempt);
         continue; // retryable transport-shaped failure
       }
 
@@ -209,29 +230,60 @@ export function extractOutputText(body) {
 }
 
 /**
- * Structural validation of the parsed decision (mirrors the UI route).
- * Returns an error category string when invalid, else null.
+ * Validate the parsed decision against the same JSON-schema object sent to
+ * the provider. This intentionally covers the schema subset used by the
+ * contract: objects, required keys, additionalProperties, strings with
+ * length bounds, integers with numeric bounds, and enums.
  *
  * @param {unknown} parsed
  * @returns {string | null}
  */
 export function validateParsed(parsed) {
-  if (!parsed || typeof parsed !== "object") return "invalid_structured_json";
-  const value = /** @type {Record<string, unknown>} */ (parsed);
-  const summary = value.observation_summary;
-  const reasoning = value.reasoning_summary;
-  const note = value.coordinate_note;
-  const believed = value.believed_position;
-  if (typeof summary !== "string" || summary.trim().length === 0) return "schema_violation";
-  if (typeof reasoning !== "string" || reasoning.trim().length === 0) return "schema_violation";
-  if (typeof note !== "string" || note.trim().length === 0) return "schema_violation";
-  if (!believed || typeof believed !== "object") return "schema_violation";
-  const point = /** @type {Record<string, unknown>} */ (believed);
-  if (!Number.isInteger(point.x) || !Number.isInteger(point.y)) return "schema_violation";
-  if (!MODEL_ALLOWLIST.length) return "schema_violation"; // unreachable guard
-  if (value.direction !== "up" && value.direction !== "right"
-    && value.direction !== "down" && value.direction !== "left") {
-    return "schema_violation";
+  return validateSchemaValue(parsed, RESPONSE_SCHEMA) ? null : "schema_violation";
+}
+
+/**
+ * @param {unknown} value
+ * @param {Record<string, unknown>} schema
+ * @returns {boolean}
+ */
+function validateSchemaValue(value, schema) {
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return false;
+
+  if (schema.type === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const objectValue = /** @type {Record<string, unknown>} */ (value);
+    const properties = /** @type {Record<string, Record<string, unknown>>} */ (schema.properties ?? {});
+
+    if (schema.additionalProperties === false
+      && Object.keys(objectValue).some((key) => !Object.hasOwn(properties, key))) {
+      return false;
+    }
+    for (const required of /** @type {string[]} */ (schema.required ?? [])) {
+      if (!Object.hasOwn(objectValue, required)) return false;
+    }
+    for (const [key, propertySchema] of Object.entries(properties)) {
+      if (Object.hasOwn(objectValue, key) && !validateSchemaValue(objectValue[key], propertySchema)) {
+        return false;
+      }
+    }
+    return true;
   }
-  return null;
+
+  if (schema.type === "string") {
+    if (typeof value !== "string" || value.trim().length === 0) return false;
+    const length = Array.from(value).length;
+    if (typeof schema.minLength === "number" && length < schema.minLength) return false;
+    if (typeof schema.maxLength === "number" && length > schema.maxLength) return false;
+    return true;
+  }
+
+  if (schema.type === "integer") {
+    if (!Number.isInteger(value)) return false;
+    if (typeof schema.minimum === "number" && value < schema.minimum) return false;
+    if (typeof schema.maximum === "number" && value > schema.maximum) return false;
+    return true;
+  }
+
+  return false;
 }

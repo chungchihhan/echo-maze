@@ -25,28 +25,27 @@ import {
 } from "../contract.js";
 import { extractJsonObject } from "./json-extract.js";
 import { normalizeDecisionFields } from "./decision-normalize.js";
+import { retryDelay } from "./retry-delay.js";
 const CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-/** Backoff before a retry: honors Retry-After (seconds) else exponential. */
-async function retryDelay(retryAfterHeader, attempt, latencyMs = 0, baseMs = 2000) {
-  const parsed = retryAfterHeader ? Number(retryAfterHeader) : NaN;
-  const waitMs = Number.isFinite(parsed)
-    ? parsed * 1000
-    : Math.min(120_000, baseMs * 2 ** (attempt - 1));
-  await new Promise((resolve) => setTimeout(resolve, Math.max(0, waitMs - latencyMs)));
-}
 
 /**
  * @param {string} apiKey
- * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, model?: string }} [options]
+ * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, model?: string,
+ *            retryDelayImpl?: typeof retryDelay }} [options]
  */
 export function createOpenRouterAdapter(apiKey, options = {}) {
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is required for live benchmark runs.");
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
   const model = options.model ?? "stealth/ox-alpha";
+  const retryDelayImpl = options.retryDelayImpl ?? retryDelay;
   // Inter-request pacing keeps steady turn loops under provider rate limits.
   const pacingMs = options.pacingMs ?? 2500;
+
+  async function waitForRetry(response, attempt, baseMs = 2000) {
+    if (attempt >= MAX_ATTEMPTS_PER_TURN) return;
+    await retryDelayImpl(response?.headers?.get("retry-after") ?? null, attempt, baseMs);
+  }
 
   /**
    * @param {{ turn: number, observation: unknown, conversation: unknown[] }} request
@@ -99,10 +98,10 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
         const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
         attempts.push({
           attempt, latencyMs: Date.now() - startedAt, responseId: null, requestId: null,
-          modelReturned: null, status: null, usage: null, rawUsage: null,
+          modelRequested: model, modelReturned: null, status: null, usage: null, rawUsage: null,
           errorCategory: timedOut ? "timeout" : "network_error", rawOutputPreview: null,
         });
-        await retryDelay(response?.headers?.get("retry-after"), attempt);
+        await waitForRetry(response, attempt);
         continue;
       }
 
@@ -115,17 +114,18 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
         const retryable = response.status >= 500;
         attempts.push({
           attempt, latencyMs: Date.now() - startedAt, responseId: null, requestId,
-          modelReturned: null, status: String(response.status), usage: null, rawUsage: null,
+          modelRequested: model, modelReturned: null, status: String(response.status), usage: null, rawUsage: null,
           errorCategory: "invalid_api_response", rawOutputPreview: null,
         });
         if (!retryable) break;
-        await retryDelay(response.headers.get("retry-after"), attempt, 0, response.status === 429 ? 20_000 : 2_000);
+        await waitForRetry(response, attempt, response.status === 429 ? 20_000 : 2_000);
         continue;
       }
 
       const base = {
         attempt,
         latencyMs: Date.now() - startedAt,
+        modelRequested: model,
         responseId: body.id ?? null,
         requestId,
         modelReturned: body.model ?? null,
@@ -145,7 +145,7 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
             ?? `http_${response.status}`,
         });
         if (retryable) {
-          await retryDelay(response.headers.get("retry-after"), attempt, base.latencyMs, response.status === 429 ? 20_000 : 2_000);
+          await waitForRetry(response, attempt, response.status === 429 ? 20_000 : 2_000);
           continue;
         }
         break;
@@ -157,7 +157,7 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
       // output: retry once with the doubled budget before giving up.
       if (!message.refusal && choice?.finish_reason === "length") {
         attempts.push({ ...base, errorCategory: "incomplete_output" });
-        await retryDelay(response.headers.get("retry-after"), attempt);
+        await waitForRetry(response, attempt);
         continue;
       }
       if (message.refusal) {
@@ -172,7 +172,7 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
       const text = typeof message.content === "string" ? message.content : null;
       if (!text) {
         attempts.push({ ...base, errorCategory: "missing_output_text" });
-        await retryDelay(response.headers.get("retry-after"), attempt);
+        await waitForRetry(response, attempt);
         continue; // retryable transport-shaped failure
       }
 

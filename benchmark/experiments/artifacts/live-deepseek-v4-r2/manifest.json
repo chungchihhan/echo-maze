@@ -37,6 +37,7 @@
   "schemaHash": "0e94fdaa32bdcba1a721c9de07d1e43ebfe363fb5444e2fb2fb18ab4da4f86ef",
   "rulesHash": "6a71af164ac2dce74ec626aa93292b15d687e70b583d455059608dcad65bec14",
   "mode": "live",
+  "resultClass": "exploratory",
   "provider": "openrouter",
   "apiEndpoint": "https://openrouter.ai/api/v1/chat/completions",
   "modelRequested": "deepseek/deepseek-v4-flash-0731",

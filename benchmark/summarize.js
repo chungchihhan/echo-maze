@@ -49,6 +49,14 @@ export async function loadBatch(batchDir) {
  */
 export async function regenerateSummary(batchDir) {
   const { manifest, episodes } = await loadBatch(batchDir);
+  const modelsReturned = collectReturnedModels(episodes);
+  const modelReturned = modelsReturned.length === 1
+    ? modelsReturned[0]
+    : modelsReturned.length > 1
+      ? null
+      : manifest.mode === "dry-run"
+        ? manifest.modelReturned ?? null
+        : null;
 
   /** @type {Array<Record<string, unknown>>} */
   const episodeMetrics = [];
@@ -67,13 +75,16 @@ export async function regenerateSummary(batchDir) {
     policyRevision: manifest.policyRevision ?? "v0.0",
     batchId: manifest.batchId,
     mode,
+    resultClass: manifest.resultClass ?? (mode === "dry-run" ? "exploratory" : "unknown"),
     provider: manifest.provider ?? "openai",
     liveApiCall: mode === "live",
     disclaimer: mode === "dry-run"
       ? "DRY-RUN with deterministic mock adapter; NOT a live gpt-5.6-luna result."
-      : "Live OpenAI Responses API calls.",
+      : `Live ${manifest.provider ?? "configured provider"} API calls.`,
     modelRequested: manifest.modelRequested,
-    modelReturned: manifest.modelReturned ?? null,
+    modelReturned,
+    modelsReturned,
+    dirty: manifest.dirty ?? null,
     generatedAt: Date.now(),
     totalEpisodes: batch.totalEpisodes,
     solved: batch.solved,
@@ -89,6 +100,8 @@ export async function regenerateSummary(batchDir) {
       schemaHash: manifest.schemaHash,
       rulesHash: manifest.rulesHash,
       commit: manifest.commit,
+      sourceHash: manifest.sourceHash ?? null,
+      diffHash: manifest.diffHash ?? null,
     },
     episodes: episodeMetrics,
   };
@@ -102,6 +115,21 @@ export async function regenerateSummary(batchDir) {
   return summary;
 }
 
+function collectReturnedModels(episodes) {
+  const models = new Set();
+  for (const episode of episodes) {
+    for (const event of episode.events) {
+      if (event.type !== "model_result") continue;
+      for (const attempt of event.attempts ?? []) {
+        if (typeof attempt.modelReturned === "string" && attempt.modelReturned.length > 0) {
+          models.add(attempt.modelReturned);
+        }
+      }
+    }
+  }
+  return [...models].sort();
+}
+
 /**
  * @param {Record<string, any>} summary
  */
@@ -112,7 +140,10 @@ function renderMarkdown(summary) {
   const lines = [];
   lines.push(`# Echo Maze Benchmark ${s.benchmarkVersion} (policy ${s.policyRevision})`);
   lines.push("");
-  lines.push(`**${s.modelRequested} · Echo Maze ${s.benchmarkVersion}** (${s.provider})`);
+  const returnedModels = s.modelsReturned?.length
+    ? s.modelsReturned.join(", ")
+    : s.modelReturned ?? "unknown";
+  lines.push(`**${s.modelRequested} → ${returnedModels} · Echo Maze ${s.benchmarkVersion}** (${s.provider})`);
   if (s.mode === "dry-run") lines.push("");
   if (s.mode === "dry-run") lines.push("> ⚠️ DRY-RUN (deterministic mock adapter) — not a live gpt-5.6-luna result.");
   lines.push("");
@@ -143,7 +174,7 @@ function renderMarkdown(summary) {
     ].join(" | ").replace(/^/, "| ").replace(/$/, " |"));
   }
   lines.push("");
-  lines.push(`commit: \`${s.hashes.commit}\` · fixtureSetHash: \`${short(s.hashes.fixtureSetHash)}\` · promptHash: \`${short(s.hashes.promptHash)}\` · schemaHash: \`${short(s.hashes.schemaHash)}\` · rulesHash: \`${short(s.hashes.rulesHash)}\``);
+  lines.push(`class: \`${s.resultClass}\` · commit: \`${s.hashes.commit}\` · dirty: \`${s.dirty ?? "unknown"}\` · sourceHash: \`${short(s.hashes.sourceHash)}\` · diffHash: \`${short(s.hashes.diffHash)}\` · fixtureSetHash: \`${short(s.hashes.fixtureSetHash)}\` · promptHash: \`${short(s.hashes.promptHash)}\` · schemaHash: \`${short(s.hashes.schemaHash)}\` · rulesHash: \`${short(s.hashes.rulesHash)}\``);
   return lines.join("\n") + "\n";
 }
 

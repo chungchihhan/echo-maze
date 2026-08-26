@@ -13,7 +13,6 @@
 
 import { appendFileSync, mkdirSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -24,6 +23,7 @@ import {
   TIMEOUT_MS,
   contractDescriptor,
   sha256,
+  stableStringify,
 } from "./contract.js";
 import { loadAllFixtures, verifyFixture } from "./fixtures.js";
 import { runEpisode } from "./episode.js";
@@ -32,9 +32,42 @@ import { createOpenRouterAdapter } from "./adapters/openrouter-adapter.js";
 import { createMockAdapter } from "./adapters/mock-adapter.js";
 import { computeEpisodeMetrics } from "./metrics.js";
 import { TERMINAL_STATUSES, regenerateSummary } from "./summarize.js";
+import { inspectGitProvenance } from "./provenance.js";
+
+const RESUME_MANIFEST_FIELDS = [
+  "benchmarkId",
+  "benchmarkVersion",
+  "policyRevision",
+  "generatorVersion",
+  "observationVersion",
+  "fixtureOrder",
+  "modelAllowlist",
+  "defaultModel",
+  "maxTurns",
+  "timeoutMs",
+  "maxAttemptsPerTurn",
+  "retryPolicy",
+  "maxOutputTokensBase",
+  "reasoningEffort",
+  "coordinateSystem",
+  "hiddenStatePolicy",
+  "promptHash",
+  "schemaHash",
+  "rulesHash",
+  "mode",
+  "resultClass",
+  "provider",
+  "apiEndpoint",
+  "modelRequested",
+  "fixtureSetHash",
+  "commit",
+  "dirty",
+  "sourceHash",
+  "diffHash",
+];
 
 function parseArgs(argv) {
-  const args = { dryRun: false, model: null, out: null, resume: null, provider: "openai" };
+  const args = { dryRun: false, model: null, out: null, resume: null, provider: null };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--dry-run") args.dryRun = true;
     else if (argv[i] === "--model") args.model = argv[++i];
@@ -43,18 +76,55 @@ function parseArgs(argv) {
     else if (argv[i] === "--provider") args.provider = argv[++i];
     else throw new Error(`Unknown argument: ${argv[i]}`);
   }
-  if (!PROVIDERS[args.provider]) {
-    throw new Error(`Unknown provider: ${args.provider} (known: ${Object.keys(PROVIDERS).join(", ")})`);
+  const provider = args.provider ?? "openai";
+  if (!PROVIDERS[provider]) {
+    throw new Error(`Unknown provider: ${provider} (known: ${Object.keys(PROVIDERS).join(", ")})`);
   }
   return args;
 }
 
-function gitCommit() {
-  try {
-    return execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
-  } catch {
-    return "unknown";
+/**
+ * @param {Record<string, unknown>} previous
+ * @param {Record<string, unknown>} expected
+ * @returns {string[]}
+ */
+export function resumeManifestMismatches(previous, expected) {
+  return RESUME_MANIFEST_FIELDS.filter((field) =>
+    stableStringify(previous[field]) !== stableStringify(expected[field]));
+}
+
+function readEvents(transcriptPath) {
+  return readFileSync(transcriptPath, "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line));
+}
+
+function collectReturnedModels(batchDir, fixtures) {
+  const models = new Set();
+  for (const fixture of fixtures) {
+    const transcriptPath = path.join(batchDir, "episodes", fixture.fixtureId, "transcript.jsonl");
+    if (!existsSync(transcriptPath)) continue;
+    for (const event of readEvents(transcriptPath)) {
+      if (event.type !== "model_result") continue;
+      for (const attempt of event.attempts ?? []) {
+        if (typeof attempt.modelReturned === "string" && attempt.modelReturned.length > 0) {
+          models.add(attempt.modelReturned);
+        }
+      }
+    }
   }
+  return [...models].sort();
+}
+
+function updateManifestModelIdentity(manifest, batchDir, fixtures) {
+  const modelsReturned = collectReturnedModels(batchDir, fixtures);
+  manifest.modelsReturned = modelsReturned;
+  manifest.modelReturned = modelsReturned.length === 1 ? modelsReturned[0] : null;
+}
+
+function writeManifest(manifestPath, manifest) {
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 export async function runBatch(options = {}) {
@@ -68,11 +138,6 @@ export async function runBatch(options = {}) {
   if (!MODEL_ALLOWLIST.includes(model)) {
     throw new Error(`Model "${model}" is not in the allowlist (${MODEL_ALLOWLIST.join(", ")}).`);
   }
-  if (!dryRun && !options.apiKey) {
-    throw new Error(
-      `Live runs require ${PROVIDERS[provider].apiKeyEnv}. Use --dry-run for offline pipeline validation.`,
-    );
-  }
 
   // Fail fast on any fixture drift before spending a single API call.
   const fixtures = await loadAllFixtures();
@@ -84,17 +149,46 @@ export async function runBatch(options = {}) {
   const batchId = options.batchId
     ?? `bench-${contractDescriptor().benchmarkVersion}-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}Z`;
   const batchDir = path.resolve(options.outDir ?? path.join("results", batchId));
-  mkdirSync(path.join(batchDir, "episodes"), { recursive: true });
+  const manifestPath = path.join(batchDir, "manifest.json");
+  const hasExistingManifest = existsSync(manifestPath);
+  const existingManifest = hasExistingManifest
+    ? JSON.parse(readFileSync(manifestPath, "utf8"))
+    : null;
 
-  const manifest = {
-    batchId: path.basename(batchDir),
+  if (options.resume && !hasExistingManifest) {
+    throw new Error(`Cannot resume ${batchDir}: manifest.json does not exist.`);
+  }
+  if (!options.resume && hasExistingManifest) {
+    throw new Error(`Output directory already contains a manifest: ${batchDir}. Use --resume to continue it.`);
+  }
+
+  const provenance = inspectGitProvenance();
+  if (!dryRun && (!provenance.gitAvailable || provenance.dirty)) {
+    throw new Error(
+      "Live benchmark runs require a clean git worktree with readable source provenance. "
+      + "Commit or stash local changes before running the official benchmark.",
+    );
+  }
+  if (!dryRun && !options.apiKey) {
+    throw new Error(
+      `Live runs require ${PROVIDERS[provider].apiKeyEnv}. Use --dry-run for offline pipeline validation.`,
+    );
+  }
+
+  const expectedManifest = {
+    batchId: options.resume ? existingManifest.batchId : (options.batchId ?? path.basename(batchDir)),
     ...contractDescriptor(),
     mode: dryRun ? "dry-run" : "live",
+    resultClass: dryRun || options.commit ? "exploratory" : "official",
     provider,
     apiEndpoint: PROVIDERS[provider].endpoint,
     modelRequested: model,
-    modelReturned: dryRun ? "mock-explorer" : model,
-    commit: options.commit ?? gitCommit(),
+    modelReturned: dryRun ? "mock-explorer" : null,
+    modelsReturned: dryRun ? ["mock-explorer"] : [],
+    commit: options.commit ?? provenance.commit,
+    dirty: provenance.dirty,
+    sourceHash: provenance.sourceHash,
+    diffHash: provenance.diffHash,
     createdAt: Date.now(),
     timeoutMs: TIMEOUT_MS,
     maxTurns: MAX_TURNS,
@@ -105,12 +199,29 @@ export async function runBatch(options = {}) {
       platform: `${process.platform}-${process.arch}`,
     },
   };
-  writeFileSync(path.join(batchDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+
+  let manifest;
+  if (existingManifest) {
+    const mismatches = resumeManifestMismatches(existingManifest, expectedManifest);
+    if (mismatches.length > 0) {
+      throw new Error(
+        `Cannot resume ${batchDir}: manifest is incompatible for ${mismatches.join(", ")}. `
+        + "Use a new output directory for a different model, provider, contract, or source.",
+      );
+    }
+    // Resume keeps the original manifest metadata and never rewrites it from
+    // the current command-line defaults before compatibility is established.
+    manifest = existingManifest;
+  } else {
+    mkdirSync(path.join(batchDir, "episodes"), { recursive: true });
+    manifest = expectedManifest;
+    writeManifest(manifestPath, manifest);
+  }
 
   const adapterFor = () => {
     if (dryRun) return createMockAdapter();
     if (provider === "openrouter") return createOpenRouterAdapter(options.apiKey, { model });
-    return createOpenAIAdapter(options.apiKey);
+    return createOpenAIAdapter(options.apiKey, { model });
   };
 
   /** @type {Array<{ fixtureId: string, status: string, skipped: boolean }>} */
@@ -145,12 +256,12 @@ export async function runBatch(options = {}) {
     });
     const wallClockMs = Date.now() - startedAt;
 
-    const events = readFileSync(transcriptPath, "utf8").split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line));
+    const events = readEvents(transcriptPath);
     const metrics = computeEpisodeMetrics(events, fixture);
     const episodeSummary = { ...result, wallClockMs, metrics };
     writeFileSync(path.join(episodeDir, "episode-summary.json"), `${JSON.stringify(episodeSummary, null, 2)}\n`);
+    updateManifestModelIdentity(manifest, batchDir, fixtures);
+    writeManifest(manifestPath, manifest);
     console.log(
       `[${fixture.fixtureId}] ${result.status} in ${result.turns} turns `
       + `(moves=${metrics.successfulMoves}, walls=${metrics.wallHits})`,
@@ -158,6 +269,8 @@ export async function runBatch(options = {}) {
     outcomes.push({ fixtureId: fixture.fixtureId, status: result.status, skipped: false });
   }
 
+  updateManifestModelIdentity(manifest, batchDir, fixtures);
+  writeManifest(manifestPath, manifest);
   const summary = await regenerateSummary(batchDir);
   console.log("\n" + summaryMarkdownHeader(summary));
   console.log(`Batch artifacts: ${batchDir}`);
@@ -166,8 +279,11 @@ export async function runBatch(options = {}) {
 
 function summaryMarkdownHeader(summary) {
   const percent = (value) => value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+  const returnedModels = summary.modelsReturned?.length
+    ? summary.modelsReturned.join(", ")
+    : summary.modelReturned ?? "unknown";
   return [
-    `${summary.modelRequested} · Echo Maze ${summary.benchmarkVersion} [${summary.mode.toUpperCase()}]`,
+    `${summary.modelRequested} → ${returnedModels} · Echo Maze ${summary.benchmarkVersion} [${summary.mode.toUpperCase()} · ${summary.resultClass}]`,
     `${summary.solved}/${summary.episodes.length} solved · ${percent(summary.successRate)} success`,
     `Mean SPL: ${round3(summary.meanSpl)} | Solved-only path efficiency: ${round3(summary.solvedOnlyPathEfficiency)}`,
     `Wall hits: ${summary.totals.wallHits} | Invalid responses: ${summary.totals.invalidResponses} | API failures: ${summary.totals.apiFailures}`,
@@ -183,12 +299,14 @@ function round3(value) {
 // CLI entry point when executed directly.
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
-  const apiKeyEnv = PROVIDERS[args.provider].apiKeyEnv;
+  const provider = args.provider ?? "openai";
+  const apiKeyEnv = PROVIDERS[provider].apiKeyEnv;
   runBatch({
     dryRun: args.dryRun,
     model: args.model ?? undefined,
     outDir: args.out ?? (args.resume ? path.resolve(args.resume) : undefined),
-    provider: args.provider,
+    provider,
+    resume: Boolean(args.resume),
     apiKey: process.env[apiKeyEnv],
   }).then((result) => {
     const terminal = result.outcomes.every((outcome) => TERMINAL_STATUSES.has(outcome.status));
