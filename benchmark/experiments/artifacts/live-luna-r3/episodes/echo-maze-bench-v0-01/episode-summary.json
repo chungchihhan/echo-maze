@@ -1,0 +1,101 @@
+{
+  "status": "invalid_output",
+  "reason": "Model chose visibly blocked direction \"up\".",
+  "turns": 8,
+  "wallClockMs": 46905,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-01",
+    "status": "invalid_output",
+    "reason": "Model chose visibly blocked direction \"up\".",
+    "solved": false,
+    "attemptedTurns": 8,
+    "validActions": 7,
+    "successfulMoves": 7,
+    "wallHits": 0,
+    "invalidResponses": 1,
+    "apiFailures": 0,
+    "retryAttempts": 0,
+    "optimalPathLength": 32,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 3082,
+      "p95": 4569,
+      "max": 4569,
+      "total": 26881,
+      "samples": 8
+    },
+    "tokens": {
+      "inputTokens": 16901,
+      "outputTokens": 1622,
+      "reasoningTokens": 349,
+      "totalTokens": 18523,
+      "providerRaw": [
+        {
+          "input_tokens": 837,
+          "output_tokens": 169,
+          "total_tokens": 1006,
+          "output_tokens_details": {
+            "reasoning_tokens": 25
+          }
+        },
+        {
+          "input_tokens": 1211,
+          "output_tokens": 192,
+          "total_tokens": 1403,
+          "output_tokens_details": {
+            "reasoning_tokens": 41
+          }
+        },
+        {
+          "input_tokens": 1590,
+          "output_tokens": 203,
+          "total_tokens": 1793,
+          "output_tokens_details": {
+            "reasoning_tokens": 50
+          }
+        },
+        {
+          "input_tokens": 1971,
+          "output_tokens": 198,
+          "total_tokens": 2169,
+          "output_tokens_details": {
+            "reasoning_tokens": 35
+          }
+        },
+        {
+          "input_tokens": 2379,
+          "output_tokens": 206,
+          "total_tokens": 2585,
+          "output_tokens_details": {
+            "reasoning_tokens": 38
+          }
+        },
+        {
+          "input_tokens": 2671,
+          "output_tokens": 218,
+          "total_tokens": 2889,
+          "output_tokens_details": {
+            "reasoning_tokens": 50
+          }
+        },
+        {
+          "input_tokens": 2963,
+          "output_tokens": 258,
+          "total_tokens": 3221,
+          "output_tokens_details": {
+            "reasoning_tokens": 83
+          }
+        },
+        {
+          "input_tokens": 3279,
+          "output_tokens": 178,
+          "total_tokens": 3457,
+          "output_tokens_details": {
+            "reasoning_tokens": 27
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "status": "api_failure",
+  "reason": "Turn failed after 2 attempt(s); last category: invalid_api_response.",
+  "turns": 15,
+  "wallClockMs": 774820,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-04",
+    "status": "api_failure",
+    "reason": "Turn failed after 2 attempt(s); last category: invalid_api_response.",
+    "solved": false,
+    "attemptedTurns": 15,
+    "validActions": 14,
+    "successfulMoves": 14,
+    "wallHits": 0,
+    "invalidResponses": 0,
+    "apiFailures": 1,
+    "retryAttempts": 1,
+    "optimalPathLength": 24,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 45834,
+      "p95": 90005,
+      "max": 90005,
+      "total": 737759,
+      "samples": 16
+    },
+    "tokens": {
+      "inputTokens": 52010,
+      "outputTokens": 17933,
+      "reasoningTokens": 13561,
+      "totalTokens": 69943,
+      "providerRaw": [
+        {
+          "input_tokens": 782,
+          "output_tokens": 569,
+          "total_tokens": 1351,
+          "output_tokens_details": {
+            "reasoning_tokens": 420
+          }
+        },
+        {
+          "input_tokens": 1142,
+          "output_tokens": 1315,
+          "total_tokens": 2457,
+          "output_tokens_details": {
+            "reasoning_tokens": 1064
+          }
+        },
+        {
+          "input_tokens": 1544,
+          "output_tokens": 1474,
+          "total_tokens": 3018,
+          "output_tokens_details": {
+            "reasoning_tokens": 1116
+          }
+        },
+        {
+          "input_tokens": 2004,
+          "output_tokens": 1266,
+          "total_tokens": 3270,
+          "output_tokens_details": {
+            "reasoning_tokens": 975
+          }
+        },
+        {
+          "input_tokens": 2378,
+          "output_tokens": 1229,
+          "total_tokens": 3607,
+          "output_tokens_details": {
+            "reasoning_tokens": 920
+          }
+        },
+        {
+          "input_tokens": 2758,
+          "output_tokens": 968,
+          "total_tokens": 3726,
+          "output_tokens_details": {
+            "reasoning_tokens": 727
+          }
+        },
+        {
+          "input_tokens": 3119,
+          "output_tokens": 954,
+          "total_tokens": 4073,
+          "output_tokens_details": {
+            "reasoning_tokens": 684
+          }
+        },
+        {
+          "input_tokens": 3461,
+          "output_tokens": 1027,
+          "total_tokens": 4488,
+          "output_tokens_details": {
+            "reasoning_tokens": 758
+          }
+        },
+        {
+          "input_tokens": 3794,
+          "output_tokens": 1396,
+          "total_tokens": 5190,
+          "output_tokens_details": {
+            "reasoning_tokens": 1026
+          }
+        },
+        {
+          "input_tokens": 4148,
+          "output_tokens": 855,
+          "total_tokens": 5003,
+          "output_tokens_details": {
+            "reasoning_tokens": 580
+          }
+        },
+        {
+          "input_tokens": 4548,
+          "output_tokens": 1555,
+          "total_tokens": 6103,
+          "output_tokens_details": {
+            "reasoning_tokens": 1157
+          }
+        },
+        {
+          "input_tokens": 4969,
+          "output_tokens": 1058,
+          "total_tokens": 6027,
+          "output_tokens_details": {
+            "reasoning_tokens": 747
+          }
+        },
+        {
+          "input_tokens": 5374,
+          "output_tokens": 991,
+          "total_tokens": 6365,
+          "output_tokens_details": {
+            "reasoning_tokens": 689
+          }
+        },
+        {
+          "input_tokens": 5788,
+          "output_tokens": 1276,
+          "total_tokens": 7064,
+          "output_tokens_details": {
+            "reasoning_tokens": 1093
+          }
+        },
+        {
+          "input_tokens": 6201,
+          "output_tokens": 2000,
+          "total_tokens": 8201,
+          "output_tokens_details": {
+            "reasoning_tokens": 1605
+          }
+        }
+      ]
+    }
+  }
+}

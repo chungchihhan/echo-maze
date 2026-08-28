@@ -42,3 +42,5 @@ yarn-error.log*
 
 # local experiment transcripts and review notes
 /docs/
+# benchmark run artifacts (canonical exports may be archived elsewhere)
+/results/

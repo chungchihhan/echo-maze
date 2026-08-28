@@ -1,0 +1,85 @@
+{
+  "status": "invalid_output",
+  "reason": "Model chose visibly blocked direction \"down\".",
+  "turns": 6,
+  "wallClockMs": 35480,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-07",
+    "status": "invalid_output",
+    "reason": "Model chose visibly blocked direction \"down\".",
+    "solved": false,
+    "attemptedTurns": 6,
+    "validActions": 5,
+    "successfulMoves": 5,
+    "wallHits": 0,
+    "invalidResponses": 1,
+    "apiFailures": 0,
+    "retryAttempts": 0,
+    "optimalPathLength": 28,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 3513,
+      "p95": 4130,
+      "max": 4130,
+      "total": 20470,
+      "samples": 6
+    },
+    "tokens": {
+      "inputTokens": 9095,
+      "outputTokens": 1420,
+      "reasoningTokens": 414,
+      "totalTokens": 10515,
+      "providerRaw": [
+        {
+          "input_tokens": 752,
+          "output_tokens": 179,
+          "total_tokens": 931,
+          "output_tokens_details": {
+            "reasoning_tokens": 32
+          }
+        },
+        {
+          "input_tokens": 1027,
+          "output_tokens": 206,
+          "total_tokens": 1233,
+          "output_tokens_details": {
+            "reasoning_tokens": 44
+          }
+        },
+        {
+          "input_tokens": 1348,
+          "output_tokens": 239,
+          "total_tokens": 1587,
+          "output_tokens_details": {
+            "reasoning_tokens": 69
+          }
+        },
+        {
+          "input_tokens": 1678,
+          "output_tokens": 250,
+          "total_tokens": 1928,
+          "output_tokens_details": {
+            "reasoning_tokens": 73
+          }
+        },
+        {
+          "input_tokens": 1979,
+          "output_tokens": 341,
+          "total_tokens": 2320,
+          "output_tokens_details": {
+            "reasoning_tokens": 167
+          }
+        },
+        {
+          "input_tokens": 2311,
+          "output_tokens": 205,
+          "total_tokens": 2516,
+          "output_tokens_details": {
+            "reasoning_tokens": 29
+          }
+        }
+      ]
+    }
+  }
+}
