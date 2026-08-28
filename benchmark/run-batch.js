@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_MODEL,
+  INTER_EPISODE_COOLDOWN_MS,
   MAX_TURNS,
   MODEL_ALLOWLIST,
   PROVIDERS,
@@ -46,6 +47,9 @@ const RESUME_MANIFEST_FIELDS = [
   "maxTurns",
   "timeoutMs",
   "maxAttemptsPerTurn",
+  "interRequestPacingMs",
+  "interEpisodeCooldownMs",
+  "rateLimitRetryBaseMs",
   "retryPolicy",
   "maxOutputTokensBase",
   "reasoningEffort",
@@ -131,6 +135,8 @@ export async function runBatch(options = {}) {
   const dryRun = options.dryRun ?? false;
   const model = options.model ?? DEFAULT_MODEL;
   const provider = options.provider ?? "openai";
+  const sleepImpl = options.sleepImpl ?? ((waitMs) => new Promise((resolve) => setTimeout(resolve, waitMs)));
+  const episodeCooldownMs = options.episodeCooldownMs ?? INTER_EPISODE_COOLDOWN_MS;
 
   if (!PROVIDERS[provider]) {
     throw new Error(`Unknown provider: ${provider}`);
@@ -267,6 +273,15 @@ export async function runBatch(options = {}) {
       + `(moves=${metrics.successfulMoves}, walls=${metrics.wallHits})`,
     );
     outcomes.push({ fixtureId: fixture.fixtureId, status: result.status, skipped: false });
+    if (result.status === "infra_interrupted") {
+      console.error("Rate limit remained active after retries. Batch paused; rerun with --resume after the quota resets.");
+      break;
+    }
+    const hasAnotherFixture = fixtures.indexOf(fixture) < fixtures.length - 1;
+    if (!dryRun && hasAnotherFixture && episodeCooldownMs > 0) {
+      console.log(`Cooldown ${episodeCooldownMs / 1000}s before the next episode...`);
+      await sleepImpl(episodeCooldownMs);
+    }
   }
 
   updateManifestModelIdentity(manifest, batchDir, fixtures);
@@ -284,9 +299,9 @@ function summaryMarkdownHeader(summary) {
     : summary.modelReturned ?? "unknown";
   return [
     `${summary.modelRequested} → ${returnedModels} · Echo Maze ${summary.benchmarkVersion} [${summary.mode.toUpperCase()} · ${summary.resultClass}]`,
-    `${summary.solved}/${summary.episodes.length} solved · ${percent(summary.successRate)} success`,
+    `${summary.solved}/${summary.totalEpisodes} scored episodes solved · ${percent(summary.successRate)} success`,
     `Mean SPL: ${round3(summary.meanSpl)} | Solved-only path efficiency: ${round3(summary.solvedOnlyPathEfficiency)}`,
-    `Wall hits: ${summary.totals.wallHits} | Invalid responses: ${summary.totals.invalidResponses} | API failures: ${summary.totals.apiFailures}`,
+    `Wall hits: ${summary.totals.wallHits} | Invalid responses: ${summary.totals.invalidResponses} | API failures: ${summary.totals.apiFailures} | Infra interruptions: ${summary.totals.infraInterruptions}`,
     `Latency p50/p95/max: ${summary.latency.p50}/${summary.latency.p95}/${summary.latency.max} ms`,
     `Tokens: total ${summary.totals.tokens.totalTokens}`,
   ].join("\n");

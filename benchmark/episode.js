@@ -27,7 +27,7 @@ import { fixtureCells } from "./fixtures.js";
  *             error: { category: string, message: string } | null }>} options.adapter
  * @param {number} [options.maxTurns]
  * @param {(event: Record<string, unknown>) => void} [options.onEvent]
- * @returns {Promise<{ status: "solved"|"unsolved_max_turns"|"invalid_output"|"api_failure",
+ * @returns {Promise<{ status: "solved"|"unsolved_max_turns"|"invalid_output"|"api_failure"|"infra_interrupted",
  *                     reason: string, turns: number }>}
  */
 export async function runEpisode({ fixture, adapter, maxTurns = 120, onEvent = () => {} }) {
@@ -67,7 +67,9 @@ export async function runEpisode({ fixture, adapter, maxTurns = 120, onEvent = (
     });
 
     if (!result.parsed) {
-      const status = errorCategory === "api_failure" ? "api_failure" : "invalid_output";
+      const status = errorCategory === "infra_interrupted"
+        ? "infra_interrupted"
+        : errorCategory === "api_failure" ? "api_failure" : "invalid_output";
       const reason = result.error?.message ?? `No valid decision (category: ${errorCategory ?? "unknown"}).`;
       return end(onEvent, status, reason, turn);
     }

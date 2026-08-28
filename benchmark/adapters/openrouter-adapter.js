@@ -14,9 +14,11 @@
  */
 
 import {
+  INTER_REQUEST_PACING_MS,
   MAX_ATTEMPTS_PER_TURN,
   MAX_OUTPUT_TOKENS_BASE,
   OUTPUT_FRAMING,
+  RATE_LIMIT_RETRY_BASE_MS,
   REASONING_EFFORT,
   RESPONSE_SCHEMA,
   RESPONSE_SCHEMA_NAME,
@@ -25,6 +27,12 @@ import {
 } from "../contract.js";
 import { extractJsonObject } from "./json-extract.js";
 import { normalizeDecisionFields } from "./decision-normalize.js";
+import {
+  computePacingDelayMs,
+  extractRateLimitHeaders,
+  sanitizeProviderError,
+  validateParsed,
+} from "./openai-adapter.js";
 import { retryDelay } from "./retry-delay.js";
 const CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -40,11 +48,15 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
   const model = options.model ?? "stealth/ox-alpha";
   const retryDelayImpl = options.retryDelayImpl ?? retryDelay;
   // Inter-request pacing keeps steady turn loops under provider rate limits.
-  const pacingMs = options.pacingMs ?? 2500;
+  const pacingMs = options.pacingMs ?? INTER_REQUEST_PACING_MS;
 
   async function waitForRetry(response, attempt, baseMs = 2000) {
     if (attempt >= MAX_ATTEMPTS_PER_TURN) return;
-    await retryDelayImpl(response?.headers?.get("retry-after") ?? null, attempt, baseMs);
+    const retryHint = response?.headers?.get("retry-after")
+      ?? response?.headers?.get("x-ratelimit-reset-tokens")
+      ?? response?.headers?.get("x-ratelimit-reset-requests")
+      ?? null;
+    await retryDelayImpl(retryHint, attempt, baseMs);
   }
 
   /**
@@ -106,19 +118,22 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
       }
 
       const requestId = response.headers.get("x-request-id");
+      const rateLimit = extractRateLimitHeaders(response.headers);
       /** @type {any} */
       let body;
       try {
         body = await response.json();
       } catch {
-        const retryable = response.status >= 500;
+        const retryable = response.status === 408 || response.status === 409
+          || response.status === 429 || response.status >= 500;
         attempts.push({
           attempt, latencyMs: Date.now() - startedAt, responseId: null, requestId,
           modelRequested: model, modelReturned: null, status: String(response.status), usage: null, rawUsage: null,
           errorCategory: "invalid_api_response", rawOutputPreview: null,
+          rateLimit, providerError: null,
         });
         if (!retryable) break;
-        await waitForRetry(response, attempt, response.status === 429 ? 20_000 : 2_000);
+        await waitForRetry(response, attempt, response.status === 429 ? RATE_LIMIT_RETRY_BASE_MS : 2_000);
         continue;
       }
 
@@ -129,11 +144,13 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
         responseId: body.id ?? null,
         requestId,
         modelReturned: body.model ?? null,
-        status: body.error ? "error" : String(response.status),
+        status: String(response.status),
         usage: normalizeUsage(body.usage),
         rawUsage: body.usage ?? null,
         errorCategory: null,
         rawOutputPreview: null,
+        rateLimit,
+        providerError: null,
       };
 
       if (!response.ok || body.error) {
@@ -143,9 +160,10 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
           ...base,
           errorCategory: body.error?.code ?? body.error?.metadata?.raw
             ?? `http_${response.status}`,
+          providerError: sanitizeProviderError(body.error),
         });
         if (retryable) {
-          await waitForRetry(response, attempt, response.status === 429 ? 20_000 : 2_000);
+          await waitForRetry(response, attempt, response.status === 429 ? RATE_LIMIT_RETRY_BASE_MS : 2_000);
           continue;
         }
         break;
@@ -178,15 +196,14 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
 
       try {
         const parsed = normalizeDecisionFields(extractJsonObject(text));
-        // Reuse the shared structural validation from the OpenAI adapter.
-        const { validateParsed } = await import("./openai-adapter.js");
         const problem = validateParsed(parsed);
         if (problem) {
           attempts.push({ ...base, errorCategory: problem, rawOutputPreview: text.slice(0, 240) });
           break; // invalid model output: never repaired
         }
-        attempts.push(base);
-        if (pacingMs > 0) await new Promise((resolve) => setTimeout(resolve, pacingMs));
+        const pacingDelayMs = computePacingDelayMs(base.usage, rateLimit, pacingMs);
+        attempts.push({ ...base, pacingDelayMs });
+        if (pacingDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, pacingDelayMs));
         return { attempts, parsed, error: null };
       } catch {
         attempts.push({
@@ -200,12 +217,15 @@ export function createOpenRouterAdapter(apiKey, options = {}) {
 
     const last = attempts[attempts.length - 1];
     const category = last?.errorCategory ?? "unknown";
+    const rateLimited = last?.status === "429" || category === "rate_limit_exceeded";
     const invalidCategories = new Set(["refusal", "invalid_structured_json", "schema_violation"]);
     return {
       attempts,
       parsed: null,
       error: {
-        category: invalidCategories.has(category) ? "invalid_response" : "api_failure",
+        category: invalidCategories.has(category)
+          ? "invalid_response"
+          : rateLimited ? "infra_interrupted" : "api_failure",
         message: `Turn failed after ${attempts.length} attempt(s); last category: ${category}.`,
       },
     };
