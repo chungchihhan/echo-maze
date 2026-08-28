@@ -148,7 +148,7 @@ export function computeBatchLatency(perEpisodeEvents) {
     p50: percentile(latencies, 0.5),
     p95: percentile(latencies, 0.95),
     max: latencies.length ? latencies[latencies.length - 1] : null,
-    totalWallClockMs: sum(latencies),
+    totalRequestLatencyMs: sum(latencies),
     samples: latencies.length,
   };
 }

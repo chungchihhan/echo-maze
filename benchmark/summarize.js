@@ -155,7 +155,7 @@ function renderMarkdown(summary) {
   lines.push(`- Invalid responses: ${s.totals.invalidResponses}`);
   lines.push(`- API failures: ${s.totals.apiFailures}`);
   lines.push(`- Retry attempts: ${s.totals.retryAttempts}`);
-  lines.push(`- Latency p50/p95/max: ${num(s.latency.p50)} / ${num(s.latency.p95)} / ${num(s.latency.max)} ms (wall-clock total ${num(s.latency.totalWallClockMs)} ms over ${s.latency.samples} attempts)`);
+  lines.push(`- Request latency p50/p95/max: ${num(s.latency.p50)} / ${num(s.latency.p95)} / ${num(s.latency.max)} ms (request total ${num(s.latency.totalRequestLatencyMs)} ms over ${s.latency.samples} attempts)`);
   lines.push(`- Token usage: input ${s.totals.tokens.inputTokens} · output ${s.totals.tokens.outputTokens} · reasoning ${s.totals.tokens.reasoningTokens} · total ${s.totals.tokens.totalTokens}`);
   lines.push("");
   lines.push("| Fixture | Status | Turns | Moves | Wall hits | Path eff | SPL | p50 ms | Tokens |");
