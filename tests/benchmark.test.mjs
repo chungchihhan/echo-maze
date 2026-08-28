@@ -123,6 +123,7 @@ test("v0 fixtures are intact, unique, and BFS-verified", async () => {
     "openai/gpt-5.6-luna",
     "stealth/ox-alpha",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "deepseek/deepseek-v4-flash-0731",
   ]);
 });
 
@@ -217,6 +218,8 @@ test("metrics are reproducible from event logs with correct accounting", () => {
   assert.equal(batch.totals.wallHits, 1);
   const latency = computeBatchLatency([[...events], []]);
   assert.equal(latency.samples, 3);
+  assert.equal(latency.totalRequestLatencyMs, 800);
+  assert.equal("totalWallClockMs" in latency, false);
   assert.equal(percentile([1, 2], 0.95), 2);
 });
 

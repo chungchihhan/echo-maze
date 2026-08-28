@@ -73,9 +73,10 @@ export const RETRY_POLICY =
   "Transport failures (timeout (180s), network error, HTTP 408/409/429/5xx, unreadable API response with 5xx, " +
   "incomplete or missing output) are retried up to 2 attempts per turn with exponential backoff honoring " +
   "Retry-After, plus fixed inter-request pacing; every attempt is recorded. " +
-  "Invalid model output (unparseable JSON, schema violation, refusal) and a chosen direction that is " +
-  "visibly blocked are NOT retried or repaired: they are recorded as invalid responses and terminate " +
-  "the episode as unsolved.";
+  "Invalid model output (unparseable JSON, schema violation, refusal) is not retried or repaired: it is " +
+  "recorded as an invalid response and terminates the episode as unsolved. A valid direction that is " +
+  "visibly blocked is not retried or repaired: it is executed as a blocked move, counts as a wall hit, " +
+  "consumes the turn, and the episode continues.";
 
 export const COORDINATE_SYSTEM =
   "Walker-relative coordinates start at (0,0). A successful move right changes x by +1, left by -1, " +
