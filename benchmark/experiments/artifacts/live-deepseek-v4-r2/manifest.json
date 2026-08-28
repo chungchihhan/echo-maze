@@ -1,0 +1,52 @@
+{
+  "batchId": "live-deepseek-v4-r2",
+  "benchmarkId": "echo-maze-benchmark",
+  "benchmarkVersion": "v0",
+  "policyRevision": "v0.4",
+  "generatorVersion": "maze-gen-1",
+  "observationVersion": "corridor-sightline-v1",
+  "fixtureOrder": [
+    "echo-maze-bench-v0-01",
+    "echo-maze-bench-v0-02",
+    "echo-maze-bench-v0-03",
+    "echo-maze-bench-v0-04",
+    "echo-maze-bench-v0-05",
+    "echo-maze-bench-v0-06",
+    "echo-maze-bench-v0-07",
+    "echo-maze-bench-v0-08",
+    "echo-maze-bench-v0-09",
+    "echo-maze-bench-v0-10"
+  ],
+  "modelAllowlist": [
+    "gpt-5.6-luna",
+    "openai/gpt-5.6-luna",
+    "stealth/ox-alpha",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "deepseek/deepseek-v4-flash-0731"
+  ],
+  "defaultModel": "gpt-5.6-luna",
+  "maxTurns": 120,
+  "timeoutMs": 180000,
+  "maxAttemptsPerTurn": 2,
+  "retryPolicy": "Transport failures (timeout (180s), network error, HTTP 408/409/429/5xx, unreadable API response with 5xx, incomplete or missing output) are retried up to 2 attempts per turn with exponential backoff honoring Retry-After, plus fixed inter-request pacing; every attempt is recorded. Invalid model output (unparseable JSON, schema violation, refusal) and a chosen direction that is visibly blocked are NOT retried or repaired: they are recorded as invalid responses and terminate the episode as unsolved.",
+  "maxOutputTokensBase": 2000,
+  "reasoningEffort": "low",
+  "coordinateSystem": "Walker-relative coordinates start at (0,0). A successful move right changes x by +1, left by -1, up by +1, down by -1. A blocked move changes nothing. The Walker never receives absolute maze rows/columns.",
+  "hiddenStatePolicy": "The prompt receives only the narrow observation DTO (open/blocked directions, corridor sightlines, per-visible-cell open directions and isExit flag, last action/result) plus the current run's conversation. No full maze, no exit coordinates, no seed, no optimal route, no unseen cells, and no spectator state may enter the prompt.",
+  "promptHash": "a9f979fd720e00fb21d9c4ddd841752f83bdd04afc7fde1262d89c0f8665d1e3",
+  "schemaHash": "0e94fdaa32bdcba1a721c9de07d1e43ebfe363fb5444e2fb2fb18ab4da4f86ef",
+  "rulesHash": "6a71af164ac2dce74ec626aa93292b15d687e70b583d455059608dcad65bec14",
+  "mode": "live",
+  "resultClass": "exploratory",
+  "provider": "openrouter",
+  "apiEndpoint": "https://openrouter.ai/api/v1/chat/completions",
+  "modelRequested": "deepseek/deepseek-v4-flash-0731",
+  "modelReturned": "deepseek/deepseek-v4-flash-0731",
+  "commit": "ffe1fcf976b36119e136b84a62f8828d0cde9546",
+  "createdAt": 1787490638524,
+  "fixtureSetHash": "50d337e9c45ce996b8301f27844d9e3895c89b56f1f7bbcd394de9359968569e",
+  "runtime": {
+    "node": "v22.23.2",
+    "platform": "darwin-arm64"
+  }
+}

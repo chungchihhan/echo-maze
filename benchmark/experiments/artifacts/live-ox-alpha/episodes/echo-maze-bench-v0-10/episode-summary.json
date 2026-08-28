@@ -1,0 +1,61 @@
+{
+  "status": "invalid_output",
+  "reason": "Turn failed after 1 attempt(s); last category: schema_violation.",
+  "turns": 3,
+  "wallClockMs": 30472,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-10",
+    "status": "invalid_output",
+    "reason": "Turn failed after 1 attempt(s); last category: schema_violation.",
+    "solved": false,
+    "attemptedTurns": 3,
+    "validActions": 2,
+    "successfulMoves": 2,
+    "wallHits": 0,
+    "invalidResponses": 1,
+    "apiFailures": 0,
+    "retryAttempts": 0,
+    "optimalPathLength": 24,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 9099,
+      "p95": 12278,
+      "max": 12278,
+      "total": 30468,
+      "samples": 3
+    },
+    "tokens": {
+      "inputTokens": 3408,
+      "outputTokens": 790,
+      "reasoningTokens": 0,
+      "totalTokens": 4198,
+      "providerRaw": [
+        {
+          "input_tokens": 744,
+          "output_tokens": 266,
+          "total_tokens": 1010,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 1148,
+          "output_tokens": 244,
+          "total_tokens": 1392,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 1516,
+          "output_tokens": 280,
+          "total_tokens": 1796,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "status": "invalid_output",
+  "reason": "Turn failed after 2 attempt(s); last category: schema_violation.",
+  "turns": 11,
+  "wallClockMs": 482617,
+  "metrics": {
+    "fixtureId": "echo-maze-bench-v0-01",
+    "status": "invalid_output",
+    "reason": "Turn failed after 2 attempt(s); last category: schema_violation.",
+    "solved": false,
+    "attemptedTurns": 11,
+    "validActions": 10,
+    "successfulMoves": 10,
+    "wallHits": 0,
+    "invalidResponses": 1,
+    "apiFailures": 0,
+    "retryAttempts": 2,
+    "optimalPathLength": 32,
+    "pathEfficiency": null,
+    "spl": 0,
+    "latencyMs": {
+      "p50": 11479,
+      "p95": 164606,
+      "max": 164606,
+      "total": 453586,
+      "samples": 13
+    },
+    "tokens": {
+      "inputTokens": 39627,
+      "outputTokens": 11823,
+      "reasoningTokens": 9049,
+      "totalTokens": 51450,
+      "providerRaw": [
+        {
+          "input_tokens": 775,
+          "output_tokens": 696,
+          "total_tokens": 1471,
+          "output_tokens_details": {
+            "reasoning_tokens": 500
+          }
+        },
+        {
+          "input_tokens": 1203,
+          "output_tokens": 1122,
+          "total_tokens": 2325,
+          "output_tokens_details": {
+            "reasoning_tokens": 786
+          }
+        },
+        {
+          "input_tokens": 1974,
+          "output_tokens": 1595,
+          "total_tokens": 3569,
+          "output_tokens_details": {
+            "reasoning_tokens": 1347
+          }
+        },
+        {
+          "input_tokens": 2378,
+          "output_tokens": 634,
+          "total_tokens": 3012,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 2552,
+          "output_tokens": 974,
+          "total_tokens": 3526,
+          "output_tokens_details": {
+            "reasoning_tokens": 729
+          }
+        },
+        {
+          "input_tokens": 3215,
+          "output_tokens": 678,
+          "total_tokens": 3893,
+          "output_tokens_details": {
+            "reasoning_tokens": 488
+          }
+        },
+        {
+          "input_tokens": 3220,
+          "output_tokens": 2000,
+          "total_tokens": 5220,
+          "output_tokens_details": {
+            "reasoning_tokens": 2000
+          }
+        },
+        {
+          "input_tokens": 3486,
+          "output_tokens": 171,
+          "total_tokens": 3657,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 3773,
+          "output_tokens": 175,
+          "total_tokens": 3948,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 3864,
+          "output_tokens": 202,
+          "total_tokens": 4066,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "input_tokens": 4534,
+          "output_tokens": 820,
+          "total_tokens": 5354,
+          "output_tokens_details": {
+            "reasoning_tokens": 635
+          }
+        },
+        {
+          "input_tokens": 4520,
+          "output_tokens": 2000,
+          "total_tokens": 6520,
+          "output_tokens_details": {
+            "reasoning_tokens": 2000
+          }
+        },
+        {
+          "input_tokens": 4133,
+          "output_tokens": 756,
+          "total_tokens": 4889,
+          "output_tokens_details": {
+            "reasoning_tokens": 564
+          }
+        }
+      ]
+    }
+  }
+}

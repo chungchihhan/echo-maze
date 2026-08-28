@@ -2,41 +2,37 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import {
+  DIRECTIONS,
+  MIN_ROUTE_LENGTH,
+  canMove,
+  generateMaze,
+  getNeighbor,
+  pointKey,
+  samePoint,
+  seededRandom,
+  visibleWalkerPoints,
+  walkerObservation as observeWalkerCell,
+} from "../lib/maze/index.js";
+import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
 
-const SIZE = 9;
-const MIN_ROUTE_LENGTH = 24;
-
-type DirectionKey = "up" | "right" | "down" | "left";
-type Point = { r: number; c: number };
+// Environment semantics (maze generation, movement, corridor line-of-sight)
+// live in ../lib/maze and are shared verbatim with the headless benchmark
+// runner. This component owns only presentation state.
 type RelativePoint = { x: number; y: number };
-type Walls = Record<DirectionKey, boolean>;
-type Cell = Point & { walls: Walls };
-type Maze = { cells: Cell[][]; start: Point; exit: Point; routeLength: number; seed: string };
-type MoveResult = "moved" | "blocked";
 type GameStatus = "ready" | "running" | "won";
 type GamePhase = "walker_think" | "walker_move";
-type RandomSource = () => number;
-type ObservableCell = {
-  distance: number;
-  openDirections: DirectionKey[];
-  isExit: boolean;
-};
-type Sightline = {
-  direction: DirectionKey;
-  distanceToWall: number;
-  cells: Array<Point & ObservableCell>;
-};
-type WalkerObservation = {
+type ObservationDTO = {
   openDirections: DirectionKey[];
   blockedDirections: DirectionKey[];
-  sightlines: Array<{ direction: DirectionKey; distanceToWall: number; cells: ObservableCell[] }>;
+  sightlines: Array<{ direction: DirectionKey; distanceToWall: number; cells: Array<{ distance: number; openDirections: DirectionKey[]; isExit: boolean }> }>;
   exitVisible: boolean;
   lastAction: DirectionKey | null;
   lastResult: MoveResult | null;
 };
 type WalkerTurn = {
   turn: number;
-  observation: WalkerObservation;
+  observation: ObservationDTO;
   observationSummary: string;
   reasoning: string;
   believedPosition: RelativePoint;
@@ -120,175 +116,6 @@ type ReplayFrame = {
 };
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 
-const DIRECTIONS: Array<{ key: DirectionKey; dr: number; dc: number; label: string }> = [
-  { key: "up", dr: -1, dc: 0, label: "Up" },
-  { key: "right", dr: 0, dc: 1, label: "Right" },
-  { key: "down", dr: 1, dc: 0, label: "Down" },
-  { key: "left", dr: 0, dc: -1, label: "Left" },
-];
-
-const OPPOSITE: Record<DirectionKey, DirectionKey> = {
-  up: "down", right: "left", down: "up", left: "right",
-};
-
-function samePoint(a: Point, b: Point) { return a.r === b.r && a.c === b.c; }
-function pointKey(point: Point) { return `${point.r},${point.c}`; }
-
-function seededRandom(seedText: string): RandomSource {
-  let state = 2166136261;
-  for (let index = 0; index < seedText.length; index += 1) {
-    state ^= seedText.charCodeAt(index);
-    state = Math.imul(state, 16777619);
-  }
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function shuffle<T>(items: T[], random: RandomSource = Math.random) {
-  const result = [...items];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
-  }
-  return result;
-}
-
-function makeCells() {
-  return Array.from({ length: SIZE }, (_, r) =>
-    Array.from({ length: SIZE }, (_, c) => ({
-      r, c, walls: { up: true, right: true, down: true, left: true },
-    })),
-  );
-}
-
-function inBounds(point: Point) {
-  return point.r >= 0 && point.r < SIZE && point.c >= 0 && point.c < SIZE;
-}
-
-function getNeighbor(point: Point, direction: DirectionKey): Point {
-  const vector = DIRECTIONS.find((item) => item.key === direction);
-  return { r: point.r + (vector?.dr ?? 0), c: point.c + (vector?.dc ?? 0) };
-}
-
-function carveMaze(random: RandomSource = Math.random) {
-  const cells = makeCells();
-  const origin = { r: 0, c: 0 };
-  const visited = new Set([pointKey(origin)]);
-  const stack = [origin];
-  while (stack.length > 0) {
-    const current = stack[stack.length - 1];
-    const options = shuffle(DIRECTIONS, random).filter((direction) => {
-      const neighbor = getNeighbor(current, direction.key);
-      return inBounds(neighbor) && !visited.has(pointKey(neighbor));
-    });
-    if (options.length === 0) { stack.pop(); continue; }
-    const direction = options[0];
-    const next = getNeighbor(current, direction.key);
-    cells[current.r][current.c].walls[direction.key] = false;
-    cells[next.r][next.c].walls[OPPOSITE[direction.key]] = false;
-    visited.add(pointKey(next));
-    stack.push(next);
-  }
-  return cells;
-}
-
-function canMove(cells: Cell[][], point: Point, direction: DirectionKey) {
-  return inBounds(getNeighbor(point, direction)) && !cells[point.r][point.c].walls[direction];
-}
-
-function shortestPath(cells: Cell[][], start: Point, goal: Point) {
-  const queue = [start];
-  const previous = new Map<string, { point: Point; from: Point | null }>();
-  previous.set(pointKey(start), { point: start, from: null });
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || samePoint(current, goal)) break;
-    for (const direction of DIRECTIONS) {
-      if (!canMove(cells, current, direction.key)) continue;
-      const next = getNeighbor(current, direction.key);
-      if (previous.has(pointKey(next))) continue;
-      previous.set(pointKey(next), { point: next, from: current });
-      queue.push(next);
-    }
-  }
-  const path: Point[] = [];
-  let cursor: Point | null = goal;
-  while (cursor && previous.has(pointKey(cursor))) {
-    path.unshift(cursor);
-    cursor = previous.get(pointKey(cursor))?.from ?? null;
-  }
-  return path;
-}
-
-function generateMaze(random: RandomSource = Math.random, seedLabel?: string): Maze {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const cells = carveMaze(random);
-    const start = { r: Math.floor(random() * SIZE), c: Math.floor(random() * SIZE) };
-    const exits: Array<{ point: Point; routeLength: number }> = [];
-    for (let r = 0; r < SIZE; r += 1) {
-      for (let c = 0; c < SIZE; c += 1) {
-        const point = { r, c };
-        const routeLength = shortestPath(cells, start, point).length - 1;
-        if (routeLength >= MIN_ROUTE_LENGTH) exits.push({ point, routeLength });
-      }
-    }
-    if (exits.length > 0) {
-      const selected = exits[Math.floor(random() * exits.length)];
-      return {
-        cells, start, exit: selected.point, routeLength: selected.routeLength,
-        seed: seedLabel ?? Math.floor(random() * 0xffffffff).toString(36).slice(0, 6).toUpperCase(),
-      };
-    }
-  }
-  throw new Error("Could not generate a connected maze.");
-}
-
-function walkerSightlines(maze: Maze, origin: Point): Sightline[] {
-  return DIRECTIONS.map((direction) => {
-    const cells: Sightline["cells"] = [];
-    let cursor = origin;
-    while (canMove(maze.cells, cursor, direction.key)) {
-      cursor = getNeighbor(cursor, direction.key);
-      cells.push({
-        ...cursor,
-        distance: cells.length + 1,
-        openDirections: DIRECTIONS.filter((option) => canMove(maze.cells, cursor, option.key)).map((option) => option.key),
-        isExit: samePoint(cursor, maze.exit),
-      });
-    }
-    return { direction: direction.key, distanceToWall: cells.length, cells };
-  });
-}
-
-function visibleWalkerPoints(maze: Maze, origin: Point) {
-  const visible = new Set([pointKey(origin)]);
-  for (const sightline of walkerSightlines(maze, origin)) {
-    for (const cell of sightline.cells) visible.add(pointKey(cell));
-  }
-  return visible;
-}
-
-function walkerObservation(game: GameState): WalkerObservation {
-  const sightlines = walkerSightlines(game.maze, game.position);
-  return {
-    openDirections: DIRECTIONS.filter((direction) => canMove(game.maze.cells, game.position, direction.key)).map((d) => d.key),
-    blockedDirections: DIRECTIONS.filter((direction) => !canMove(game.maze.cells, game.position, direction.key)).map((d) => d.key),
-    sightlines: sightlines.map((line) => ({
-      direction: line.direction,
-      distanceToWall: line.distanceToWall,
-      cells: line.cells.map(({ distance, openDirections, isExit }) => ({ distance, openDirections, isExit })),
-    })),
-    exitVisible: sightlines.some((line) => line.cells.some((cell) => cell.isExit)),
-    lastAction: game.lastAction,
-    lastResult: game.lastResult,
-  };
-}
-
 function relativePositionAtObservation(history: WalkerTurn[], entryIndex: number): RelativePoint {
   const position = { x: 0, y: 0 };
   for (const entry of history.slice(0, Math.max(0, entryIndex))) {
@@ -301,7 +128,7 @@ function relativePositionAtObservation(history: WalkerTurn[], entryIndex: number
   return position;
 }
 
-function emptyObservation(): WalkerObservation {
+function emptyObservation(): ObservationDTO {
   return {
     openDirections: [],
     blockedDirections: [],
@@ -346,7 +173,7 @@ function buildReplayFrames(detail: ReplayDetail): ReplayFrame[] {
 
     if (event.type === "agent_request" && payload.role === "solo_walker") {
       if (payload.observation && typeof payload.observation === "object") {
-        pendingObservation = payload.observation as WalkerObservation;
+        pendingObservation = payload.observation as ObservationDTO;
       }
       continue;
     }
@@ -467,7 +294,7 @@ function StatusDot({ status }: { status: "live" | "idle" | "success" }) {
 function PanelLabel({ children }: { children: ReactNode }) { return <span className="panel-label">{children}</span>; }
 
 function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
-  const visible = visibleWalkerPoints(game.maze, game.position);
+  const visible = visibleWalkerPoints(game.maze.cells, game.position);
   return (
     <div className={`map-layer walker-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
       <div className="local-grid" aria-label="Walker line-of-sight view along open corridors">
@@ -731,7 +558,13 @@ function App() {
       const requestPayload = {
         role: "solo_walker",
         turn: activeTurn,
-        observation: walkerObservation(snapshot),
+        observation: observeWalkerCell(
+          snapshot.maze.cells,
+          snapshot.maze.exit,
+          snapshot.position,
+          snapshot.lastAction,
+          snapshot.lastResult,
+        ),
         conversation: snapshot.history,
       } as const;
       recordReplay(runId, snapshot, "agent_request", requestPayload);

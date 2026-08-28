@@ -1,0 +1,1386 @@
+{
+  "benchmarkId": "echo-maze-benchmark",
+  "benchmarkVersion": "v0",
+  "policyRevision": "v0.3",
+  "batchId": "live-nemotron-v03",
+  "mode": "live",
+  "provider": "openrouter",
+  "liveApiCall": true,
+  "disclaimer": "Live OpenAI Responses API calls.",
+  "modelRequested": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "modelReturned": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "generatedAt": 1787488089518,
+  "totalEpisodes": 10,
+  "solved": 0,
+  "successRate": 0,
+  "meanSpl": 0,
+  "solvedOnlyPathEfficiency": null,
+  "latency": {
+    "p50": 35431,
+    "p95": 90004,
+    "max": 90007,
+    "totalWallClockMs": 5414508,
+    "samples": 137
+  },
+  "totals": {
+    "attemptedTurns": 120,
+    "validActions": 110,
+    "successfulMoves": 110,
+    "wallHits": 0,
+    "invalidResponses": 0,
+    "apiFailures": 10,
+    "retryAttempts": 17,
+    "tokens": {
+      "inputTokens": 471571,
+      "outputTokens": 167783,
+      "reasoningTokens": 124003,
+      "totalTokens": 639354
+    }
+  },
+  "statusCounts": {
+    "api_failure": 10
+  },
+  "hashes": {
+    "fixtureSetHash": "50d337e9c45ce996b8301f27844d9e3895c89b56f1f7bbcd394de9359968569e",
+    "promptHash": "a9f979fd720e00fb21d9c4ddd841752f83bdd04afc7fde1262d89c0f8665d1e3",
+    "schemaHash": "0e94fdaa32bdcba1a721c9de07d1e43ebfe363fb5444e2fb2fb18ab4da4f86ef",
+    "rulesHash": "843edd95ed5399fb4ca2a2c90ef3f27bc29d6af915bdb6d9e4ff4264e77eb063",
+    "commit": "b28207fd94ea5c0365b05210468810c9253cfc76"
+  },
+  "episodes": [
+    {
+      "fixtureId": "echo-maze-bench-v0-01",
+      "status": "api_failure",
+      "reason": "Turn failed after 1 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 7,
+      "validActions": 6,
+      "successfulMoves": 6,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 1,
+      "optimalPathLength": 32,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 25533,
+        "p95": 90006,
+        "max": 90006,
+        "total": 339597,
+        "samples": 8
+      },
+      "tokens": {
+        "inputTokens": 14097,
+        "outputTokens": 8787,
+        "reasoningTokens": 5655,
+        "totalTokens": 22884,
+        "providerRaw": [
+          {
+            "input_tokens": 824,
+            "output_tokens": 498,
+            "total_tokens": 1322,
+            "output_tokens_details": {
+              "reasoning_tokens": 298
+            }
+          },
+          {
+            "input_tokens": 1276,
+            "output_tokens": 1827,
+            "total_tokens": 3103,
+            "output_tokens_details": {
+              "reasoning_tokens": 1398
+            }
+          },
+          {
+            "input_tokens": 1896,
+            "output_tokens": 2000,
+            "total_tokens": 3896,
+            "output_tokens_details": {
+              "reasoning_tokens": 592
+            }
+          },
+          {
+            "input_tokens": 1896,
+            "output_tokens": 1534,
+            "total_tokens": 3430,
+            "output_tokens_details": {
+              "reasoning_tokens": 1275
+            }
+          },
+          {
+            "input_tokens": 2305,
+            "output_tokens": 933,
+            "total_tokens": 3238,
+            "output_tokens_details": {
+              "reasoning_tokens": 663
+            }
+          },
+          {
+            "input_tokens": 2731,
+            "output_tokens": 937,
+            "total_tokens": 3668,
+            "output_tokens_details": {
+              "reasoning_tokens": 683
+            }
+          },
+          {
+            "input_tokens": 3169,
+            "output_tokens": 1058,
+            "total_tokens": 4227,
+            "output_tokens_details": {
+              "reasoning_tokens": 746
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-02",
+      "status": "api_failure",
+      "reason": "Turn failed after 2 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 18,
+      "validActions": 17,
+      "successfulMoves": 17,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 4,
+      "optimalPathLength": 26,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 37106,
+        "p95": 87816,
+        "max": 90006,
+        "total": 933502,
+        "samples": 22
+      },
+      "tokens": {
+        "inputTokens": 77920,
+        "outputTokens": 27605,
+        "reasoningTokens": 20393,
+        "totalTokens": 105525,
+        "providerRaw": [
+          {
+            "input_tokens": 722,
+            "output_tokens": 486,
+            "total_tokens": 1208,
+            "output_tokens_details": {
+              "reasoning_tokens": 336
+            }
+          },
+          {
+            "input_tokens": 1016,
+            "output_tokens": 2000,
+            "total_tokens": 3016,
+            "output_tokens_details": {
+              "reasoning_tokens": 586
+            }
+          },
+          {
+            "input_tokens": 1016,
+            "output_tokens": 1038,
+            "total_tokens": 2054,
+            "output_tokens_details": {
+              "reasoning_tokens": 803
+            }
+          },
+          {
+            "input_tokens": 1376,
+            "output_tokens": 1253,
+            "total_tokens": 2629,
+            "output_tokens_details": {
+              "reasoning_tokens": 998
+            }
+          },
+          {
+            "input_tokens": 1728,
+            "output_tokens": 853,
+            "total_tokens": 2581,
+            "output_tokens_details": {
+              "reasoning_tokens": 599
+            }
+          },
+          {
+            "input_tokens": 2075,
+            "output_tokens": 1331,
+            "total_tokens": 3406,
+            "output_tokens_details": {
+              "reasoning_tokens": 1075
+            }
+          },
+          {
+            "input_tokens": 2426,
+            "output_tokens": 792,
+            "total_tokens": 3218,
+            "output_tokens_details": {
+              "reasoning_tokens": 590
+            }
+          },
+          {
+            "input_tokens": 2751,
+            "output_tokens": 774,
+            "total_tokens": 3525,
+            "output_tokens_details": {
+              "reasoning_tokens": 568
+            }
+          },
+          {
+            "input_tokens": 3102,
+            "output_tokens": 1167,
+            "total_tokens": 4269,
+            "output_tokens_details": {
+              "reasoning_tokens": 898
+            }
+          },
+          {
+            "input_tokens": 3444,
+            "output_tokens": 1619,
+            "total_tokens": 5063,
+            "output_tokens_details": {
+              "reasoning_tokens": 1292
+            }
+          },
+          {
+            "input_tokens": 3813,
+            "output_tokens": 851,
+            "total_tokens": 4664,
+            "output_tokens_details": {
+              "reasoning_tokens": 556
+            }
+          },
+          {
+            "input_tokens": 4197,
+            "output_tokens": 1875,
+            "total_tokens": 6072,
+            "output_tokens_details": {
+              "reasoning_tokens": 1433
+            }
+          },
+          {
+            "input_tokens": 4552,
+            "output_tokens": 2000,
+            "total_tokens": 6552,
+            "output_tokens_details": {
+              "reasoning_tokens": 1703
+            }
+          },
+          {
+            "input_tokens": 4552,
+            "output_tokens": 1402,
+            "total_tokens": 5954,
+            "output_tokens_details": {
+              "reasoning_tokens": 1109
+            }
+          },
+          {
+            "input_tokens": 4917,
+            "output_tokens": 1857,
+            "total_tokens": 6774,
+            "output_tokens_details": {
+              "reasoning_tokens": 1463
+            }
+          },
+          {
+            "input_tokens": 5284,
+            "output_tokens": 838,
+            "total_tokens": 6122,
+            "output_tokens_details": {
+              "reasoning_tokens": 561
+            }
+          },
+          {
+            "input_tokens": 5617,
+            "output_tokens": 860,
+            "total_tokens": 6477,
+            "output_tokens_details": {
+              "reasoning_tokens": 591
+            }
+          },
+          {
+            "input_tokens": 5966,
+            "output_tokens": 1258,
+            "total_tokens": 7224,
+            "output_tokens_details": {
+              "reasoning_tokens": 911
+            }
+          },
+          {
+            "input_tokens": 6333,
+            "output_tokens": 2000,
+            "total_tokens": 8333,
+            "output_tokens_details": {
+              "reasoning_tokens": 1791
+            }
+          },
+          {
+            "input_tokens": 6333,
+            "output_tokens": 1351,
+            "total_tokens": 7684,
+            "output_tokens_details": {
+              "reasoning_tokens": 1000
+            }
+          },
+          {
+            "input_tokens": 6700,
+            "output_tokens": 2000,
+            "total_tokens": 8700,
+            "output_tokens_details": {
+              "reasoning_tokens": 1530
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-03",
+      "status": "api_failure",
+      "reason": "Turn failed after 1 attempt(s); last category: 502.",
+      "solved": false,
+      "attemptedTurns": 8,
+      "validActions": 7,
+      "successfulMoves": 7,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 0,
+      "optimalPathLength": 24,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 14071,
+        "p95": 27885,
+        "max": 27885,
+        "total": 128344,
+        "samples": 8
+      },
+      "tokens": {
+        "inputTokens": 12017,
+        "outputTokens": 6785,
+        "reasoningTokens": 5130,
+        "totalTokens": 18802,
+        "providerRaw": [
+          {
+            "input_tokens": 722,
+            "output_tokens": 411,
+            "total_tokens": 1133,
+            "output_tokens_details": {
+              "reasoning_tokens": 236
+            }
+          },
+          {
+            "input_tokens": 1039,
+            "output_tokens": 811,
+            "total_tokens": 1850,
+            "output_tokens_details": {
+              "reasoning_tokens": 631
+            }
+          },
+          {
+            "input_tokens": 1362,
+            "output_tokens": 919,
+            "total_tokens": 2281,
+            "output_tokens_details": {
+              "reasoning_tokens": 693
+            }
+          },
+          {
+            "input_tokens": 1683,
+            "output_tokens": 895,
+            "total_tokens": 2578,
+            "output_tokens_details": {
+              "reasoning_tokens": 653
+            }
+          },
+          {
+            "input_tokens": 2014,
+            "output_tokens": 934,
+            "total_tokens": 2948,
+            "output_tokens_details": {
+              "reasoning_tokens": 689
+            }
+          },
+          {
+            "input_tokens": 2403,
+            "output_tokens": 1258,
+            "total_tokens": 3661,
+            "output_tokens_details": {
+              "reasoning_tokens": 1033
+            }
+          },
+          {
+            "input_tokens": 2794,
+            "output_tokens": 1557,
+            "total_tokens": 4351,
+            "output_tokens_details": {
+              "reasoning_tokens": 1195
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-04",
+      "status": "api_failure",
+      "reason": "Turn failed after 2 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 15,
+      "validActions": 14,
+      "successfulMoves": 14,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 1,
+      "optimalPathLength": 24,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 45834,
+        "p95": 90005,
+        "max": 90005,
+        "total": 737759,
+        "samples": 16
+      },
+      "tokens": {
+        "inputTokens": 52010,
+        "outputTokens": 17933,
+        "reasoningTokens": 13561,
+        "totalTokens": 69943,
+        "providerRaw": [
+          {
+            "input_tokens": 782,
+            "output_tokens": 569,
+            "total_tokens": 1351,
+            "output_tokens_details": {
+              "reasoning_tokens": 420
+            }
+          },
+          {
+            "input_tokens": 1142,
+            "output_tokens": 1315,
+            "total_tokens": 2457,
+            "output_tokens_details": {
+              "reasoning_tokens": 1064
+            }
+          },
+          {
+            "input_tokens": 1544,
+            "output_tokens": 1474,
+            "total_tokens": 3018,
+            "output_tokens_details": {
+              "reasoning_tokens": 1116
+            }
+          },
+          {
+            "input_tokens": 2004,
+            "output_tokens": 1266,
+            "total_tokens": 3270,
+            "output_tokens_details": {
+              "reasoning_tokens": 975
+            }
+          },
+          {
+            "input_tokens": 2378,
+            "output_tokens": 1229,
+            "total_tokens": 3607,
+            "output_tokens_details": {
+              "reasoning_tokens": 920
+            }
+          },
+          {
+            "input_tokens": 2758,
+            "output_tokens": 968,
+            "total_tokens": 3726,
+            "output_tokens_details": {
+              "reasoning_tokens": 727
+            }
+          },
+          {
+            "input_tokens": 3119,
+            "output_tokens": 954,
+            "total_tokens": 4073,
+            "output_tokens_details": {
+              "reasoning_tokens": 684
+            }
+          },
+          {
+            "input_tokens": 3461,
+            "output_tokens": 1027,
+            "total_tokens": 4488,
+            "output_tokens_details": {
+              "reasoning_tokens": 758
+            }
+          },
+          {
+            "input_tokens": 3794,
+            "output_tokens": 1396,
+            "total_tokens": 5190,
+            "output_tokens_details": {
+              "reasoning_tokens": 1026
+            }
+          },
+          {
+            "input_tokens": 4148,
+            "output_tokens": 855,
+            "total_tokens": 5003,
+            "output_tokens_details": {
+              "reasoning_tokens": 580
+            }
+          },
+          {
+            "input_tokens": 4548,
+            "output_tokens": 1555,
+            "total_tokens": 6103,
+            "output_tokens_details": {
+              "reasoning_tokens": 1157
+            }
+          },
+          {
+            "input_tokens": 4969,
+            "output_tokens": 1058,
+            "total_tokens": 6027,
+            "output_tokens_details": {
+              "reasoning_tokens": 747
+            }
+          },
+          {
+            "input_tokens": 5374,
+            "output_tokens": 991,
+            "total_tokens": 6365,
+            "output_tokens_details": {
+              "reasoning_tokens": 689
+            }
+          },
+          {
+            "input_tokens": 5788,
+            "output_tokens": 1276,
+            "total_tokens": 7064,
+            "output_tokens_details": {
+              "reasoning_tokens": 1093
+            }
+          },
+          {
+            "input_tokens": 6201,
+            "output_tokens": 2000,
+            "total_tokens": 8201,
+            "output_tokens_details": {
+              "reasoning_tokens": 1605
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-05",
+      "status": "api_failure",
+      "reason": "Turn failed after 2 attempt(s); last category: incomplete_output.",
+      "solved": false,
+      "attemptedTurns": 6,
+      "validActions": 5,
+      "successfulMoves": 5,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 1,
+      "optimalPathLength": 36,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 40083,
+        "p95": 79080,
+        "max": 79080,
+        "total": 286895,
+        "samples": 7
+      },
+      "tokens": {
+        "inputTokens": 12568,
+        "outputTokens": 11369,
+        "reasoningTokens": 6805,
+        "totalTokens": 23937,
+        "providerRaw": [
+          {
+            "input_tokens": 702,
+            "output_tokens": 514,
+            "total_tokens": 1216,
+            "output_tokens_details": {
+              "reasoning_tokens": 372
+            }
+          },
+          {
+            "input_tokens": 1010,
+            "output_tokens": 938,
+            "total_tokens": 1948,
+            "output_tokens_details": {
+              "reasoning_tokens": 650
+            }
+          },
+          {
+            "input_tokens": 1408,
+            "output_tokens": 1072,
+            "total_tokens": 2480,
+            "output_tokens_details": {
+              "reasoning_tokens": 766
+            }
+          },
+          {
+            "input_tokens": 1850,
+            "output_tokens": 1014,
+            "total_tokens": 2864,
+            "output_tokens_details": {
+              "reasoning_tokens": 710
+            }
+          },
+          {
+            "input_tokens": 2270,
+            "output_tokens": 1831,
+            "total_tokens": 4101,
+            "output_tokens_details": {
+              "reasoning_tokens": 1438
+            }
+          },
+          {
+            "input_tokens": 2664,
+            "output_tokens": 2000,
+            "total_tokens": 4664,
+            "output_tokens_details": {
+              "reasoning_tokens": 1686
+            }
+          },
+          {
+            "input_tokens": 2664,
+            "output_tokens": 4000,
+            "total_tokens": 6664,
+            "output_tokens_details": {
+              "reasoning_tokens": 1183
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-06",
+      "status": "api_failure",
+      "reason": "Turn failed after 1 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 22,
+      "validActions": 21,
+      "successfulMoves": 21,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 0,
+      "optimalPathLength": 44,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 24287,
+        "p95": 70980,
+        "max": 90006,
+        "total": 698427,
+        "samples": 22
+      },
+      "tokens": {
+        "inputTokens": 101835,
+        "outputTokens": 24654,
+        "reasoningTokens": 17493,
+        "totalTokens": 126489,
+        "providerRaw": [
+          {
+            "input_tokens": 762,
+            "output_tokens": 369,
+            "total_tokens": 1131,
+            "output_tokens_details": {
+              "reasoning_tokens": 151
+            }
+          },
+          {
+            "input_tokens": 1174,
+            "output_tokens": 1245,
+            "total_tokens": 2419,
+            "output_tokens_details": {
+              "reasoning_tokens": 934
+            }
+          },
+          {
+            "input_tokens": 1659,
+            "output_tokens": 1680,
+            "total_tokens": 3339,
+            "output_tokens_details": {
+              "reasoning_tokens": 1343
+            }
+          },
+          {
+            "input_tokens": 2186,
+            "output_tokens": 1257,
+            "total_tokens": 3443,
+            "output_tokens_details": {
+              "reasoning_tokens": 989
+            }
+          },
+          {
+            "input_tokens": 2549,
+            "output_tokens": 793,
+            "total_tokens": 3342,
+            "output_tokens_details": {
+              "reasoning_tokens": 521
+            }
+          },
+          {
+            "input_tokens": 2955,
+            "output_tokens": 1194,
+            "total_tokens": 4149,
+            "output_tokens_details": {
+              "reasoning_tokens": 805
+            }
+          },
+          {
+            "input_tokens": 3407,
+            "output_tokens": 1038,
+            "total_tokens": 4445,
+            "output_tokens_details": {
+              "reasoning_tokens": 711
+            }
+          },
+          {
+            "input_tokens": 3756,
+            "output_tokens": 635,
+            "total_tokens": 4391,
+            "output_tokens_details": {
+              "reasoning_tokens": 438
+            }
+          },
+          {
+            "input_tokens": 4088,
+            "output_tokens": 1689,
+            "total_tokens": 5777,
+            "output_tokens_details": {
+              "reasoning_tokens": 1260
+            }
+          },
+          {
+            "input_tokens": 4457,
+            "output_tokens": 974,
+            "total_tokens": 5431,
+            "output_tokens_details": {
+              "reasoning_tokens": 622
+            }
+          },
+          {
+            "input_tokens": 4836,
+            "output_tokens": 1546,
+            "total_tokens": 6382,
+            "output_tokens_details": {
+              "reasoning_tokens": 1101
+            }
+          },
+          {
+            "input_tokens": 5189,
+            "output_tokens": 818,
+            "total_tokens": 6007,
+            "output_tokens_details": {
+              "reasoning_tokens": 583
+            }
+          },
+          {
+            "input_tokens": 5569,
+            "output_tokens": 1207,
+            "total_tokens": 6776,
+            "output_tokens_details": {
+              "reasoning_tokens": 813
+            }
+          },
+          {
+            "input_tokens": 6023,
+            "output_tokens": 1243,
+            "total_tokens": 7266,
+            "output_tokens_details": {
+              "reasoning_tokens": 878
+            }
+          },
+          {
+            "input_tokens": 6433,
+            "output_tokens": 1488,
+            "total_tokens": 7921,
+            "output_tokens_details": {
+              "reasoning_tokens": 1155
+            }
+          },
+          {
+            "input_tokens": 6822,
+            "output_tokens": 1139,
+            "total_tokens": 7961,
+            "output_tokens_details": {
+              "reasoning_tokens": 726
+            }
+          },
+          {
+            "input_tokens": 7233,
+            "output_tokens": 970,
+            "total_tokens": 8203,
+            "output_tokens_details": {
+              "reasoning_tokens": 680
+            }
+          },
+          {
+            "input_tokens": 7662,
+            "output_tokens": 1460,
+            "total_tokens": 9122,
+            "output_tokens_details": {
+              "reasoning_tokens": 1083
+            }
+          },
+          {
+            "input_tokens": 8020,
+            "output_tokens": 1065,
+            "total_tokens": 9085,
+            "output_tokens_details": {
+              "reasoning_tokens": 685
+            }
+          },
+          {
+            "input_tokens": 8366,
+            "output_tokens": 1263,
+            "total_tokens": 9629,
+            "output_tokens_details": {
+              "reasoning_tokens": 914
+            }
+          },
+          {
+            "input_tokens": 8689,
+            "output_tokens": 1581,
+            "total_tokens": 10270,
+            "output_tokens_details": {
+              "reasoning_tokens": 1101
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-07",
+      "status": "api_failure",
+      "reason": "Turn failed after 2 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 12,
+      "validActions": 11,
+      "successfulMoves": 11,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 5,
+      "optimalPathLength": 28,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 31455,
+        "p95": 90004,
+        "max": 90004,
+        "total": 603077,
+        "samples": 17
+      },
+      "tokens": {
+        "inputTokens": 40551,
+        "outputTokens": 23402,
+        "reasoningTokens": 18998,
+        "totalTokens": 63953,
+        "providerRaw": [
+          {
+            "input_tokens": 724,
+            "output_tokens": 493,
+            "total_tokens": 1217,
+            "output_tokens_details": {
+              "reasoning_tokens": 312
+            }
+          },
+          {
+            "input_tokens": 1039,
+            "output_tokens": 1973,
+            "total_tokens": 3012,
+            "output_tokens_details": {
+              "reasoning_tokens": 1674
+            }
+          },
+          {
+            "input_tokens": 1392,
+            "output_tokens": 2000,
+            "total_tokens": 3392,
+            "output_tokens_details": {
+              "reasoning_tokens": 1788
+            }
+          },
+          {
+            "input_tokens": 1392,
+            "output_tokens": 976,
+            "total_tokens": 2368,
+            "output_tokens_details": {
+              "reasoning_tokens": 690
+            }
+          },
+          {
+            "input_tokens": 1778,
+            "output_tokens": 2000,
+            "total_tokens": 3778,
+            "output_tokens_details": {
+              "reasoning_tokens": 1837
+            }
+          },
+          {
+            "input_tokens": 1778,
+            "output_tokens": 1273,
+            "total_tokens": 3051,
+            "output_tokens_details": {
+              "reasoning_tokens": 939
+            }
+          },
+          {
+            "input_tokens": 2144,
+            "output_tokens": 2000,
+            "total_tokens": 4144,
+            "output_tokens_details": {
+              "reasoning_tokens": 1797
+            }
+          },
+          {
+            "input_tokens": 2144,
+            "output_tokens": 801,
+            "total_tokens": 2945,
+            "output_tokens_details": {
+              "reasoning_tokens": 568
+            }
+          },
+          {
+            "input_tokens": 2489,
+            "output_tokens": 983,
+            "total_tokens": 3472,
+            "output_tokens_details": {
+              "reasoning_tokens": 626
+            }
+          },
+          {
+            "input_tokens": 2868,
+            "output_tokens": 2000,
+            "total_tokens": 4868,
+            "output_tokens_details": {
+              "reasoning_tokens": 1795
+            }
+          },
+          {
+            "input_tokens": 2868,
+            "output_tokens": 1495,
+            "total_tokens": 4363,
+            "output_tokens_details": {
+              "reasoning_tokens": 1289
+            }
+          },
+          {
+            "input_tokens": 3211,
+            "output_tokens": 834,
+            "total_tokens": 4045,
+            "output_tokens_details": {
+              "reasoning_tokens": 526
+            }
+          },
+          {
+            "input_tokens": 3558,
+            "output_tokens": 1368,
+            "total_tokens": 4926,
+            "output_tokens_details": {
+              "reasoning_tokens": 1045
+            }
+          },
+          {
+            "input_tokens": 3939,
+            "output_tokens": 1527,
+            "total_tokens": 5466,
+            "output_tokens_details": {
+              "reasoning_tokens": 1148
+            }
+          },
+          {
+            "input_tokens": 4338,
+            "output_tokens": 1679,
+            "total_tokens": 6017,
+            "output_tokens_details": {
+              "reasoning_tokens": 1233
+            }
+          },
+          {
+            "input_tokens": 4889,
+            "output_tokens": 2000,
+            "total_tokens": 6889,
+            "output_tokens_details": {
+              "reasoning_tokens": 1731
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-08",
+      "status": "api_failure",
+      "reason": "Turn failed after 1 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 4,
+      "validActions": 3,
+      "successfulMoves": 3,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 0,
+      "optimalPathLength": 27,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 37026,
+        "p95": 90005,
+        "max": 90005,
+        "total": 194205,
+        "samples": 4
+      },
+      "tokens": {
+        "inputTokens": 3365,
+        "outputTokens": 2652,
+        "reasoningTokens": 1967,
+        "totalTokens": 6017,
+        "providerRaw": [
+          {
+            "input_tokens": 764,
+            "output_tokens": 547,
+            "total_tokens": 1311,
+            "output_tokens_details": {
+              "reasoning_tokens": 435
+            }
+          },
+          {
+            "input_tokens": 1097,
+            "output_tokens": 733,
+            "total_tokens": 1830,
+            "output_tokens_details": {
+              "reasoning_tokens": 502
+            }
+          },
+          {
+            "input_tokens": 1504,
+            "output_tokens": 1372,
+            "total_tokens": 2876,
+            "output_tokens_details": {
+              "reasoning_tokens": 1030
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-09",
+      "status": "api_failure",
+      "reason": "Turn failed after 1 attempt(s); last category: invalid_api_response.",
+      "solved": false,
+      "attemptedTurns": 24,
+      "validActions": 23,
+      "successfulMoves": 23,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 5,
+      "optimalPathLength": 29,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 50312,
+        "p95": 82070,
+        "max": 90007,
+        "total": 1414997,
+        "samples": 29
+      },
+      "tokens": {
+        "inputTokens": 153823,
+        "outputTokens": 40737,
+        "reasoningTokens": 31024,
+        "totalTokens": 194560,
+        "providerRaw": [
+          {
+            "input_tokens": 683,
+            "output_tokens": 453,
+            "total_tokens": 1136,
+            "output_tokens_details": {
+              "reasoning_tokens": 326
+            }
+          },
+          {
+            "input_tokens": 1007,
+            "output_tokens": 837,
+            "total_tokens": 1844,
+            "output_tokens_details": {
+              "reasoning_tokens": 612
+            }
+          },
+          {
+            "input_tokens": 1456,
+            "output_tokens": 1330,
+            "total_tokens": 2786,
+            "output_tokens_details": {
+              "reasoning_tokens": 1051
+            }
+          },
+          {
+            "input_tokens": 1871,
+            "output_tokens": 905,
+            "total_tokens": 2776,
+            "output_tokens_details": {
+              "reasoning_tokens": 659
+            }
+          },
+          {
+            "input_tokens": 2265,
+            "output_tokens": 1571,
+            "total_tokens": 3836,
+            "output_tokens_details": {
+              "reasoning_tokens": 1176
+            }
+          },
+          {
+            "input_tokens": 2646,
+            "output_tokens": 1029,
+            "total_tokens": 3675,
+            "output_tokens_details": {
+              "reasoning_tokens": 687
+            }
+          },
+          {
+            "input_tokens": 3017,
+            "output_tokens": 881,
+            "total_tokens": 3898,
+            "output_tokens_details": {
+              "reasoning_tokens": 613
+            }
+          },
+          {
+            "input_tokens": 3369,
+            "output_tokens": 1616,
+            "total_tokens": 4985,
+            "output_tokens_details": {
+              "reasoning_tokens": 1154
+            }
+          },
+          {
+            "input_tokens": 3717,
+            "output_tokens": 1627,
+            "total_tokens": 5344,
+            "output_tokens_details": {
+              "reasoning_tokens": 1303
+            }
+          },
+          {
+            "input_tokens": 4046,
+            "output_tokens": 823,
+            "total_tokens": 4869,
+            "output_tokens_details": {
+              "reasoning_tokens": 568
+            }
+          },
+          {
+            "input_tokens": 4414,
+            "output_tokens": 871,
+            "total_tokens": 5285,
+            "output_tokens_details": {
+              "reasoning_tokens": 577
+            }
+          },
+          {
+            "input_tokens": 4835,
+            "output_tokens": 1524,
+            "total_tokens": 6359,
+            "output_tokens_details": {
+              "reasoning_tokens": 1168
+            }
+          },
+          {
+            "input_tokens": 5247,
+            "output_tokens": 1565,
+            "total_tokens": 6812,
+            "output_tokens_details": {
+              "reasoning_tokens": 1150
+            }
+          },
+          {
+            "input_tokens": 5749,
+            "output_tokens": 1405,
+            "total_tokens": 7154,
+            "output_tokens_details": {
+              "reasoning_tokens": 1065
+            }
+          },
+          {
+            "input_tokens": 6187,
+            "output_tokens": 2000,
+            "total_tokens": 8187,
+            "output_tokens_details": {
+              "reasoning_tokens": 1540
+            }
+          },
+          {
+            "input_tokens": 6187,
+            "output_tokens": 1008,
+            "total_tokens": 7195,
+            "output_tokens_details": {
+              "reasoning_tokens": 762
+            }
+          },
+          {
+            "input_tokens": 6640,
+            "output_tokens": 1993,
+            "total_tokens": 8633,
+            "output_tokens_details": {
+              "reasoning_tokens": 1604
+            }
+          },
+          {
+            "input_tokens": 7089,
+            "output_tokens": 2000,
+            "total_tokens": 9089,
+            "output_tokens_details": {
+              "reasoning_tokens": 1603
+            }
+          },
+          {
+            "input_tokens": 7089,
+            "output_tokens": 1149,
+            "total_tokens": 8238,
+            "output_tokens_details": {
+              "reasoning_tokens": 778
+            }
+          },
+          {
+            "input_tokens": 7586,
+            "output_tokens": 2000,
+            "total_tokens": 9586,
+            "output_tokens_details": {
+              "reasoning_tokens": 1570
+            }
+          },
+          {
+            "input_tokens": 7586,
+            "output_tokens": 2406,
+            "total_tokens": 9992,
+            "output_tokens_details": {
+              "reasoning_tokens": 1918
+            }
+          },
+          {
+            "input_tokens": 8088,
+            "output_tokens": 2000,
+            "total_tokens": 10088,
+            "output_tokens_details": {
+              "reasoning_tokens": 1574
+            }
+          },
+          {
+            "input_tokens": 8088,
+            "output_tokens": 1355,
+            "total_tokens": 9443,
+            "output_tokens_details": {
+              "reasoning_tokens": 1042
+            }
+          },
+          {
+            "input_tokens": 8444,
+            "output_tokens": 1914,
+            "total_tokens": 10358,
+            "output_tokens_details": {
+              "reasoning_tokens": 1557
+            }
+          },
+          {
+            "input_tokens": 8762,
+            "output_tokens": 1485,
+            "total_tokens": 10247,
+            "output_tokens_details": {
+              "reasoning_tokens": 1154
+            }
+          },
+          {
+            "input_tokens": 9096,
+            "output_tokens": 2000,
+            "total_tokens": 11096,
+            "output_tokens_details": {
+              "reasoning_tokens": 1550
+            }
+          },
+          {
+            "input_tokens": 9096,
+            "output_tokens": 1652,
+            "total_tokens": 10748,
+            "output_tokens_details": {
+              "reasoning_tokens": 1348
+            }
+          },
+          {
+            "input_tokens": 9563,
+            "output_tokens": 1338,
+            "total_tokens": 10901,
+            "output_tokens_details": {
+              "reasoning_tokens": 915
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": "echo-maze-bench-v0-10",
+      "status": "api_failure",
+      "reason": "Turn failed after 1 attempt(s); last category: 502.",
+      "solved": false,
+      "attemptedTurns": 4,
+      "validActions": 3,
+      "successfulMoves": 3,
+      "wallHits": 0,
+      "invalidResponses": 0,
+      "apiFailures": 1,
+      "retryAttempts": 0,
+      "optimalPathLength": 24,
+      "pathEfficiency": null,
+      "spl": 0,
+      "latencyMs": {
+        "p50": 5624,
+        "p95": 40650,
+        "max": 40650,
+        "total": 77705,
+        "samples": 4
+      },
+      "tokens": {
+        "inputTokens": 3385,
+        "outputTokens": 3859,
+        "reasoningTokens": 2977,
+        "totalTokens": 7244,
+        "providerRaw": [
+          {
+            "input_tokens": 742,
+            "output_tokens": 428,
+            "total_tokens": 1170,
+            "output_tokens_details": {
+              "reasoning_tokens": 237
+            }
+          },
+          {
+            "input_tokens": 1114,
+            "output_tokens": 1569,
+            "total_tokens": 2683,
+            "output_tokens_details": {
+              "reasoning_tokens": 1254
+            }
+          },
+          {
+            "input_tokens": 1529,
+            "output_tokens": 1862,
+            "total_tokens": 3391,
+            "output_tokens_details": {
+              "reasoning_tokens": 1486
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
