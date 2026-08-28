@@ -10,9 +10,9 @@ This module implements the headless Echo Maze Benchmark: a versioned contract, i
 
 ## Start here
 
-- `contract.js` — versioned v0 contract (policy revision v0.4): fixture order, model allowlist, turn/timeout/retry policy, prompt, schema, output framing, and their hashes
+- `contract.js` — versioned v0 contract (policy revision v0.5): fixture order, model allowlist, turn/timeout/retry/pacing policy, prompt, schema, output framing, and their hashes
 - `fixtures/` + `fixtures.js` — ten frozen maze snapshots with content hashes; runtime loads snapshots and never re-rolls seeds
-- `adapters/openai-adapter.js`, `adapters/openrouter-adapter.js` — provider transports; transport retries recorded with exponential backoff honoring Retry-After; invalid model output recorded, never repaired
+- `adapters/openai-adapter.js`, `adapters/openrouter-adapter.js` — provider transports; transport retries recorded with exponential backoff honoring provider reset hints; invalid model output recorded, never repaired
 - `adapters/retry-delay.js` — shared bounded backoff and Retry-After parsing used by both live adapters
 - `adapters/mock-adapter.js` — deterministic offline explorer used by dry runs
 - `episode.js` — episode state machine emitting append-only events

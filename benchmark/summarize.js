@@ -87,6 +87,7 @@ export async function regenerateSummary(batchDir) {
     dirty: manifest.dirty ?? null,
     generatedAt: Date.now(),
     totalEpisodes: batch.totalEpisodes,
+    recordedEpisodes: batch.recordedEpisodes,
     solved: batch.solved,
     successRate: batch.successRate,
     meanSpl: batch.meanSpl,
@@ -154,6 +155,7 @@ function renderMarkdown(summary) {
   lines.push(`- Wall hits: ${s.totals.wallHits}`);
   lines.push(`- Invalid responses: ${s.totals.invalidResponses}`);
   lines.push(`- API failures: ${s.totals.apiFailures}`);
+  lines.push(`- Infrastructure interruptions: ${s.totals.infraInterruptions}`);
   lines.push(`- Retry attempts: ${s.totals.retryAttempts}`);
   lines.push(`- Request latency p50/p95/max: ${num(s.latency.p50)} / ${num(s.latency.p95)} / ${num(s.latency.max)} ms (request total ${num(s.latency.totalRequestLatencyMs)} ms over ${s.latency.samples} attempts)`);
   lines.push(`- Token usage: input ${s.totals.tokens.inputTokens} · output ${s.totals.tokens.outputTokens} · reasoning ${s.totals.tokens.reasoningTokens} · total ${s.totals.tokens.totalTokens}`);
