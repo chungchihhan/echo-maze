@@ -63,6 +63,7 @@ export function computeEpisodeMetrics(events, fixture) {
 
   return {
     fixtureId: fixture.fixtureId,
+    difficultyTier: fixture.difficultyTier ?? null,
     status: endEvent?.status ?? "incomplete",
     reason: endEvent?.reason ?? null,
     solved: Boolean(solved),

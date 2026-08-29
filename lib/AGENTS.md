@@ -22,7 +22,7 @@ This module is the single source of truth for Echo Maze environment semantics: d
 - No React, DOM, Cloudflare bindings, D1, Node-only APIs, or OpenAI imports are permitted here. This module must stay runnable in the browser bundle and in plain Node scripts.
 - The observation DTO must never expose absolute coordinates, seeds, exit coordinates as data, or unseen cells; exit presence appears only as per-visible-cell `isExit`.
 - Movement semantics: a successful move changes relative coordinates by exactly one step; a blocked move changes nothing.
-- Changing any semantic here invalidates benchmark fixtures and requires regenerating them plus bumping the contract revision in `benchmark/contract.js`.
+- Changing any semantic here invalidates generated benchmark suites and requires bumping the contract revision in `benchmark/contract.js`.
 
 ## Verification
 

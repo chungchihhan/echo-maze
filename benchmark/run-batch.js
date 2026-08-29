@@ -1,23 +1,28 @@
 /**
  * Echo Maze Benchmark v0 sequential batch runner.
  *
- * Runs all 10 frozen fixtures in contract order, one episode at a time, with
+ * Generates a seeded, stratified fixture suite per batch and runs one episode
+ * at a time, with
  * full episode isolation (fresh adapter state and conversation per episode).
  * Every episode produces an append-only JSONL transcript; summaries are
  * regenerated from those raw artifacts.
  *
  * Usage:
- *   node benchmark/run-batch.js --dry-run [--out results/<dir>] [--resume <dir>]
+ *   node benchmark/run-batch.js --dry-run [--suite-seed <seed>] [--mazes-per-tier <n>]
+ *     [--out results/<dir>] [--resume <dir>]
  *   OPENAI_API_KEY=... node benchmark/run-batch.js [--model gpt-5.6-luna] [...]
  */
 
 import { appendFileSync, mkdirSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_MODEL,
+  DEFAULT_MAZES_PER_TIER,
   MAX_TURNS,
+  MAX_MAZES_PER_TIER,
   MODEL_ALLOWLIST,
   PROVIDERS,
   TIMEOUT_MS,
@@ -25,7 +30,12 @@ import {
   sha256,
   stableStringify,
 } from "./contract.js";
-import { loadAllFixtures, verifyFixture } from "./fixtures.js";
+import {
+  generateFixtureSuite,
+  loadAllFixtures,
+  verifyFixture,
+  writeFixtureSuite,
+} from "./fixtures.js";
 import { runEpisode } from "./episode.js";
 import { createOpenAIAdapter } from "./adapters/openai-adapter.js";
 import { createOpenRouterAdapter } from "./adapters/openrouter-adapter.js";
@@ -40,7 +50,12 @@ const RESUME_MANIFEST_FIELDS = [
   "policyRevision",
   "generatorVersion",
   "observationVersion",
+  "routeLengthTiers",
+  "defaultMazesPerTier",
+  "maxMazesPerTier",
   "fixtureOrder",
+  "suiteSeed",
+  "mazesPerTier",
   "modelAllowlist",
   "defaultModel",
   "maxTurns",
@@ -67,18 +82,35 @@ const RESUME_MANIFEST_FIELDS = [
 ];
 
 function parseArgs(argv) {
-  const args = { dryRun: false, model: null, out: null, resume: null, provider: null };
+  const args = {
+    dryRun: false,
+    model: null,
+    out: null,
+    resume: null,
+    provider: null,
+    suiteSeed: null,
+    mazesPerTier: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--dry-run") args.dryRun = true;
     else if (argv[i] === "--model") args.model = argv[++i];
     else if (argv[i] === "--out") args.out = argv[++i];
     else if (argv[i] === "--resume") args.resume = argv[++i];
     else if (argv[i] === "--provider") args.provider = argv[++i];
+    else if (argv[i] === "--suite-seed") args.suiteSeed = argv[++i];
+    else if (argv[i] === "--mazes-per-tier") args.mazesPerTier = Number(argv[++i]);
     else throw new Error(`Unknown argument: ${argv[i]}`);
   }
   const provider = args.provider ?? "openai";
   if (!PROVIDERS[provider]) {
     throw new Error(`Unknown provider: ${provider} (known: ${Object.keys(PROVIDERS).join(", ")})`);
+  }
+  if (args.mazesPerTier !== null && (
+    !Number.isInteger(args.mazesPerTier) ||
+    args.mazesPerTier < 1 ||
+    args.mazesPerTier > MAX_MAZES_PER_TIER
+  )) {
+    throw new Error(`--mazes-per-tier must be an integer from 1 to ${MAX_MAZES_PER_TIER}.`);
   }
   return args;
 }
@@ -139,13 +171,6 @@ export async function runBatch(options = {}) {
     throw new Error(`Model "${model}" is not in the allowlist (${MODEL_ALLOWLIST.join(", ")}).`);
   }
 
-  // Fail fast on any fixture drift before spending a single API call.
-  const fixtures = await loadAllFixtures();
-  const problems = fixtures.flatMap(verifyFixture);
-  if (problems.length > 0) {
-    throw new Error(`Fixture verification failed:\n${problems.join("\n")}`);
-  }
-
   const batchId = options.batchId
     ?? `bench-${contractDescriptor().benchmarkVersion}-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}Z`;
   const batchDir = path.resolve(options.outDir ?? path.join("results", batchId));
@@ -160,6 +185,25 @@ export async function runBatch(options = {}) {
   }
   if (!options.resume && hasExistingManifest) {
     throw new Error(`Output directory already contains a manifest: ${batchDir}. Use --resume to continue it.`);
+  }
+
+  const suiteSeed = options.suiteSeed
+    ?? existingManifest?.suiteSeed
+    ?? `suite-${randomBytes(8).toString("hex")}`;
+  const mazesPerTier = options.mazesPerTier
+    ?? existingManifest?.mazesPerTier
+    ?? DEFAULT_MAZES_PER_TIER;
+  const generatedFixtures = generateFixtureSuite(suiteSeed, mazesPerTier);
+  const fixtures = existingManifest
+    ? await loadAllFixtures(batchDir, existingManifest.fixtureOrder ?? [])
+    : generatedFixtures;
+  const problems = fixtures.flatMap(verifyFixture);
+  if (problems.length > 0) {
+    throw new Error(`Fixture verification failed:\n${problems.join("\n")}`);
+  }
+  const loadedFixtureSetHash = sha256(fixtures.map((fixture) => [fixture.fixtureId, fixture.fixtureHash]));
+  if (existingManifest && loadedFixtureSetHash !== existingManifest.fixtureSetHash) {
+    throw new Error(`Cannot resume ${batchDir}: batch-local fixture snapshots do not match the manifest.`);
   }
 
   const provenance = inspectGitProvenance();
@@ -193,7 +237,10 @@ export async function runBatch(options = {}) {
     timeoutMs: TIMEOUT_MS,
     maxTurns: MAX_TURNS,
     retryPolicy: contractDescriptor().retryPolicy,
-    fixtureSetHash: sha256(fixtures.map((fixture) => [fixture.fixtureId, fixture.fixtureHash])),
+    suiteSeed,
+    mazesPerTier,
+    fixtureOrder: generatedFixtures.map((fixture) => fixture.fixtureId),
+    fixtureSetHash: sha256(generatedFixtures.map((fixture) => [fixture.fixtureId, fixture.fixtureHash])),
     runtime: {
       node: process.version,
       platform: `${process.platform}-${process.arch}`,
@@ -214,9 +261,14 @@ export async function runBatch(options = {}) {
     manifest = existingManifest;
   } else {
     mkdirSync(path.join(batchDir, "episodes"), { recursive: true });
+    await writeFixtureSuite(batchDir, fixtures);
     manifest = expectedManifest;
     writeManifest(manifestPath, manifest);
   }
+
+  console.log(
+    `Suite ${manifest.suiteSeed} · ${manifest.mazesPerTier} maze(s) per tier · ${fixtures.length} total`,
+  );
 
   const adapterFor = () => {
     if (dryRun) return createMockAdapter();
@@ -307,6 +359,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     outDir: args.out ?? (args.resume ? path.resolve(args.resume) : undefined),
     provider,
     resume: Boolean(args.resume),
+    suiteSeed: args.suiteSeed ?? undefined,
+    mazesPerTier: args.mazesPerTier ?? undefined,
     apiKey: process.env[apiKeyEnv],
   }).then((result) => {
     const terminal = result.outcomes.every((outcome) => TERMINAL_STATUSES.has(outcome.status));

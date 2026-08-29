@@ -36,8 +36,7 @@ test("server-renders the Echo Maze observation homepage", async () => {
   assert.match(text, /continuously replays recorded benchmark runs/i);
   assert.doesNotMatch(text, /AGENT 01 · NAVIGATOR|AGENT 02 · WALKER|Shared conversation|Navigator locates/);
   assert.match(text, /conversation-only memory/i);
-  const routeLength = Number(text.match(/minimum optimal route (\d+) moves/)?.[1]);
-  assert.ok(routeLength >= 24, `expected route length >= 24, received ${routeLength}`);
+  assert.match(text, /optimal routes 16\s*[–-]\s*39 moves/i);
   assert.match(text, /Observe Replays GitHub/);
   assert.doesNotMatch(text, /Export replay|New maze|Ask Walker|Auto-run/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton|codex-preview/);
@@ -92,6 +91,7 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(replayUi, /ReplayLibrary/);
   assert.match(replayUi, /ReplayDetailViewer/);
   assert.match(page, /MIN_ROUTE_LENGTH/);
+  assert.match(page, /MAX_ROUTE_LENGTH/);
   assert.doesNotMatch(page + replayUi, /requestAgent|recordReplay|Export replay|Auto-run/);
   assert.doesNotMatch(page + replayUi, /navigatorCandidates|localization_evaluation|route_acquired|relocalization|walker_check/);
 
