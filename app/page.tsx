@@ -700,7 +700,7 @@ function App() {
           <MazeViewport game={displayGame} showFullMap={showFullMap} />
           <div className="action-readout">
             <div><span className="readout-label">LAST ACTION</span><strong>{displayGame.lastAction ? `Move ${DIRECTIONS.find((item) => item.key === displayGame.lastAction)?.label}` : "—"}</strong></div>
-            <div><span className="readout-label">OUTCOME</span><strong className={displayGame.lastResult === "blocked" ? "blocked-text" : "match"}>{displayGame.lastResult === "blocked" ? "Blocked" : displayGame.lastResult === "moved" ? "Move succeeded" : "Not started"}</strong></div>
+            <div><span className="readout-label">OUTCOME</span><strong className={displayGame.lastResult === "blocked" ? "blocked-text" : displayGame.lastResult === "moved" ? "match" : ""}>{displayGame.lastResult === "blocked" ? "Blocked" : displayGame.lastResult === "moved" ? "Move succeeded" : "Not started"}</strong></div>
             <div><span className="readout-label">COLLISIONS</span><strong>{String(displayGame.collisions).padStart(2, "0")}</strong></div>
           </div>
           <div className="coordinate-readout">
