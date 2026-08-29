@@ -15,7 +15,8 @@
       "wall_hits": 8,
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 1084000
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-002",
@@ -31,7 +32,8 @@
       "wall_hits": 0,
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 6200
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-003",
@@ -47,7 +49,8 @@
       "wall_hits": 0,
       "spl": 0.5757575757575758,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 301000
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-001",
@@ -63,7 +66,8 @@
       "wall_hits": 3,
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 1084000
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-002",
@@ -79,7 +83,8 @@
       "wall_hits": 1,
       "spl": 0.9230769230769231,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 247000
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-003",
@@ -95,7 +100,8 @@
       "wall_hits": 1,
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 1084000
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-001",
@@ -111,7 +117,8 @@
       "wall_hits": 1,
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 915200
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-002",
@@ -127,7 +134,8 @@
       "wall_hits": 7,
       "spl": 0.5384615384615384,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 652000
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-003",
@@ -143,7 +151,8 @@
       "wall_hits": 2,
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
-      "policy_revision": "v0.7"
+      "policy_revision": "v0.7",
+      "playback_duration_ms": 1084000
     }
   ]
 }
