@@ -200,6 +200,28 @@ npm run benchmark:run -- --dry-run --resume results/<dir> # resume a compatible 
 npm run benchmark:summary -- results/<dir> # regenerate summaries from artifacts
 ```
 
+### Publishing benchmark runs to the website
+
+Completing a benchmark does not update the website automatically. Raw batch
+artifacts stay under the gitignored `results/` directory. To make a completed
+batch available to the homepage and Replay Library, publish it into the static
+replay dataset:
+
+```bash
+npm run replay:publish -- results/luna-2026-08-29-01
+```
+
+Use the relevant batch directory in place of `luna-2026-08-29-01`. Publishing
+converts solved, failed, and max-turn episodes into the public replay format,
+writes individual runs under `public/replay-data/runs/`, and replaces
+`public/replay-data/index.json` with an index for the selected batch. It does
+not call a model or rerun the benchmark.
+
+Refresh the browser after publishing. If the development server does not pick
+up the static asset changes, restart it with `npm run dev`. Unlike `results/`,
+the files under `public/replay-data/` are tracked and must be committed if the
+replays should appear on the deployed website.
+
 Dry-run results are clearly labeled and are not live model results. Batch
 artifacts under `results/` are local outputs and ignored by Git. Archived
 live experiment records live in `benchmark/experiments/`.
