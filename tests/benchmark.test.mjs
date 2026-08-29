@@ -38,9 +38,9 @@ import {
 } from "../benchmark/fixtures.js";
 import { runEpisode } from "../benchmark/episode.js";
 import { createMockAdapter } from "../benchmark/adapters/mock-adapter.js";
-import { createOpenAIAdapter, extractOutputText, validateParsed } from "../benchmark/adapters/openai-adapter.js";
+import { computePacingDelayMs, createOpenAIAdapter, extractOutputText, extractRateLimitHeaders, validateParsed } from "../benchmark/adapters/openai-adapter.js";
 import { createOpenRouterAdapter } from "../benchmark/adapters/openrouter-adapter.js";
-import { computeRetryDelayMs, retryDelay } from "../benchmark/adapters/retry-delay.js";
+import { computeRetryDelayMs, parseDurationMs, retryDelay } from "../benchmark/adapters/retry-delay.js";
 import { extractJsonObject } from "../benchmark/adapters/json-extract.js";
 import { normalizeDecisionFields } from "../benchmark/adapters/decision-normalize.js";
 import {
@@ -363,6 +363,7 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
     fetchImpl,
     timeoutMs: 1000,
     retryDelayImpl: async () => {},
+    pacingMs: 0,
   });
   const result = await adapter({ turn: 1, observation: {}, conversation: [] });
   assert.equal(calls.length, 2);
@@ -382,7 +383,7 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
       id: "resp_2", status: "completed", output_text: "not json at all",
     }), { status: 200 });
   };
-  const invalidAdapter = createOpenAIAdapter("test-key-not-a-secret", { fetchImpl: invalidFetch, timeoutMs: 1000 });
+  const invalidAdapter = createOpenAIAdapter("test-key-not-a-secret", { fetchImpl: invalidFetch, timeoutMs: 1000, pacingMs: 0 });
   const invalidResult = await invalidAdapter({ turn: 1, observation: {}, conversation: [] });
   assert.equal(invalidCalls, 1, "invalid model output must not consume a transport retry");
   assert.equal(invalidResult.parsed, null);
@@ -446,6 +447,7 @@ test("OpenAI adapter forwards requested model and doubles incomplete-output budg
     model: requestedModel,
     timeoutMs: 1000,
     retryDelayImpl: async (...args) => delays.push(args),
+    pacingMs: 0,
   });
   const result = await adapter({ turn: 1, observation: {}, conversation: [] });
 
@@ -538,8 +540,76 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
 
 test("retry policy honors Retry-After and bounded exponential fallback", () => {
   assert.equal(computeRetryDelayMs("3", 1), 3000);
+  assert.equal(computeRetryDelayMs("1m30s", 1), 90000);
+  assert.equal(parseDurationMs("2m3.5s"), 123500);
+  assert.equal(parseDurationMs("500ms"), 500);
   assert.equal(computeRetryDelayMs(null, 2, 2000, 0), 4000);
   assert.equal(computeRetryDelayMs(null, 10, 2000, 0), 120000);
+});
+
+test("OpenAI exhausted 429s are infrastructure interruptions with quota diagnostics", async () => {
+  let calls = 0;
+  const delays = [];
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      error: { code: "rate_limit_exceeded", type: "tokens", message: "Please retry later." },
+    }), {
+      status: 429,
+      headers: {
+        "retry-after": "0",
+        "x-request-id": `req_${calls}`,
+        "x-ratelimit-limit-tokens": "250000",
+        "x-ratelimit-remaining-tokens": "0",
+        "x-ratelimit-reset-tokens": "30s",
+      },
+    });
+  };
+  const adapter = createOpenAIAdapter("test-key-not-a-secret", {
+    fetchImpl,
+    timeoutMs: 1000,
+    retryDelayImpl: async (...args) => delays.push(args),
+    pacingMs: 0,
+  });
+  const result = await adapter({ turn: 1, observation: {}, conversation: [] });
+  assert.equal(calls, 4);
+  assert.equal(delays.length, 3);
+  assert.equal(result.error.category, "infra_interrupted");
+  assert.equal(result.attempts[0].rateLimit.remainingTokens, "0");
+  assert.equal(result.attempts[0].providerError.message, "Please retry later.");
+  assert.equal(result.attempts[0].requestId, "req_1");
+});
+
+test("rate-limit header extraction omits an empty diagnostic object", () => {
+  assert.equal(extractRateLimitHeaders(new Headers()), null);
+  assert.equal(
+    extractRateLimitHeaders(new Headers({ "x-ratelimit-reset-requests": "1s" })).resetRequests,
+    "1s",
+  );
+});
+
+test("OpenAI pacing uses provider token limits when available", () => {
+  assert.equal(computePacingDelayMs(null, null, 5000), 5000);
+  assert.equal(computePacingDelayMs({ input_tokens: 40_000 }, { limitTokens: "200000" }, 5000), 15000);
+  assert.equal(computePacingDelayMs({ input_tokens: 1_000 }, { limitTokens: "200000" }, 5000), 5000);
+});
+
+test("infrastructure interruptions do not lower benchmark success rate", () => {
+  const scored = {
+    status: "solved", solved: true, spl: 1, pathEfficiency: 1,
+    attemptedTurns: 1, validActions: 1, successfulMoves: 1, wallHits: 0,
+    invalidResponses: 0, apiFailures: 0, infraInterruptions: 0, retryAttempts: 0,
+    tokens: { inputTokens: 1, outputTokens: 1, reasoningTokens: 0, totalTokens: 2 },
+  };
+  const interrupted = {
+    ...scored, status: "infra_interrupted", solved: false, spl: 0, pathEfficiency: null,
+    infraInterruptions: 1,
+  };
+  const batch = computeBatchMetrics([scored, interrupted]);
+  assert.equal(batch.recordedEpisodes, 2);
+  assert.equal(batch.totalEpisodes, 1);
+  assert.equal(batch.successRate, 1);
+  assert.equal(batch.totals.infraInterruptions, 1);
 });
 
 test("retry delay does not subtract request latency from Retry-After", async () => {

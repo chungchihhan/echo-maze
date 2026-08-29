@@ -52,14 +52,20 @@ export const PROVIDERS = {
 export const MAX_TURNS = 120;
 export const TIMEOUT_MS = 180_000;
 /** Transport-level attempts per turn for retryable failures only. */
-export const MAX_ATTEMPTS_PER_TURN = 2;
+export const MAX_ATTEMPTS_PER_TURN = 4;
+export const INTER_REQUEST_PACING_MS = 5_000;
+export const INTER_EPISODE_COOLDOWN_MS = 30_000;
+export const RATE_LIMIT_RETRY_BASE_MS = 30_000;
 export const MAX_OUTPUT_TOKENS_BASE = 2000;
 export const REASONING_EFFORT = "low";
 
 export const RETRY_POLICY =
   "Transport failures (timeout (180s), network error, HTTP 408/409/429/5xx, unreadable API response with 5xx, " +
-  "incomplete or missing output) are retried up to 2 attempts per turn with exponential backoff honoring " +
-  "Retry-After, plus fixed inter-request pacing; every attempt is recorded. " +
+  "incomplete or missing output) are retried up to 4 attempts per turn with exponential backoff honoring " +
+  "Retry-After and provider reset headers. Live calls use a 5-second minimum pace, increasing automatically " +
+  "to stay under 80% of a reported token/minute limit, and live episodes cool down by 30 seconds; " +
+  "every attempt and sanitized rate-limit header is recorded. Exhausted HTTP 429 retries interrupt the batch " +
+  "as infrastructure rather than counting as model failure. " +
   "Invalid model output (unparseable JSON, schema violation, refusal) is not retried or repaired: it is " +
   "recorded as an invalid response and terminates the episode as unsolved. A valid direction that is " +
   "visibly blocked is not retried or repaired: it is executed as a blocked move, counts as a wall hit, " +
@@ -149,6 +155,9 @@ export const RULES = {
   maxTurns: MAX_TURNS,
   timeoutMs: TIMEOUT_MS,
   maxAttemptsPerTurn: MAX_ATTEMPTS_PER_TURN,
+  interRequestPacingMs: INTER_REQUEST_PACING_MS,
+  interEpisodeCooldownMs: INTER_EPISODE_COOLDOWN_MS,
+  rateLimitRetryBaseMs: RATE_LIMIT_RETRY_BASE_MS,
   retryPolicy: RETRY_POLICY,
   maxOutputTokensBase: MAX_OUTPUT_TOKENS_BASE,
   reasoningEffort: REASONING_EFFORT,
@@ -160,6 +169,7 @@ export const RULES = {
     "unsolved_max_turns: turn budget exhausted",
     "invalid_output: invalid structured output (unparseable JSON, schema violation, refusal); no repair, no retry",
     "api_failure: retryable transport failure not resolved within the attempt budget",
+    "infra_interrupted: rate-limit retries exhausted; batch pauses and this fixture can be restarted with --resume",
   ],
   blockedDirectionPolicy:
     "Policy v0.1: a parsed decision naming a visibly blocked direction is recorded as an attempted move " +
@@ -180,6 +190,11 @@ export const RULES = {
   outputFieldPolicy:
     "Policy v0.6: the environment observation is not repeated by the model. Each decision contains only a " +
     "self-reported estimated position, free-form notes for later turns, and an action.",
+  transportResiliencePolicy:
+    "Policy v0.5: live requests have a five-second pacing floor, increase pacing to target at most 80% of " +
+    "a provider-reported token/minute limit, and episodes have a cooldown. HTTP 429 retries honor " +
+    "Retry-After or provider reset headers with a longer fallback. Exhausted 429s are infra_interrupted, " +
+    "stop the batch, and are restartable with --resume instead of being scored as model api_failure.",
   scoring: {
     pathEfficiency: "optimalPathLength / successfulMoves for solved episodes; null for unsolved episodes",
     spl: "success * optimalPathLength / max(optimalPathLength, successfulMoves)",
@@ -204,6 +219,9 @@ export function contractDescriptor() {
     maxTurns: MAX_TURNS,
     timeoutMs: TIMEOUT_MS,
     maxAttemptsPerTurn: MAX_ATTEMPTS_PER_TURN,
+    interRequestPacingMs: INTER_REQUEST_PACING_MS,
+    interEpisodeCooldownMs: INTER_EPISODE_COOLDOWN_MS,
+    rateLimitRetryBaseMs: RATE_LIMIT_RETRY_BASE_MS,
     retryPolicy: RETRY_POLICY,
     maxOutputTokensBase: MAX_OUTPUT_TOKENS_BASE,
     reasoningEffort: REASONING_EFFORT,
