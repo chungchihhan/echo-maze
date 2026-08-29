@@ -45,6 +45,7 @@ export function computeEpisodeMetrics(events, fixture) {
   const validActions = moveEvents.length;
   const invalidResponses = countInvalidResponses(events);
   const apiFailures = endEvent?.status === "api_failure" ? 1 : 0;
+  const infraInterruptions = endEvent?.status === "infra_interrupted" ? 1 : 0;
   const retryAttempts = attempts.filter((attempt) => attempt.attempt > 1).length;
   const solved = endEvent?.status === "solved";
   const optimalPathLength = fixture.optimalPathLength;
@@ -73,6 +74,7 @@ export function computeEpisodeMetrics(events, fixture) {
     wallHits,
     invalidResponses,
     apiFailures,
+    infraInterruptions,
     retryAttempts,
     optimalPathLength,
     pathEfficiency,
@@ -160,12 +162,13 @@ export function computeBatchLatency(perEpisodeEvents) {
  * @param {Array<Record<string, unknown>>} episodeMetrics
  */
 export function computeBatchMetrics(episodeMetrics) {
-  const total = episodeMetrics.length;
-  const solvedEpisodes = episodeMetrics.filter((episode) => episode.solved);
+  const scoredEpisodes = episodeMetrics.filter((episode) => episode.status !== "infra_interrupted");
+  const total = scoredEpisodes.length;
+  const solvedEpisodes = scoredEpisodes.filter((episode) => episode.solved);
   const solvedCount = solvedEpisodes.length;
 
   const meanSpl = total > 0
-    ? sum(episodeMetrics.map((episode) => episode.spl ?? 0)) / total
+    ? sum(scoredEpisodes.map((episode) => episode.spl ?? 0)) / total
     : null;
   const solvedOnlyEfficiencies = solvedEpisodes
     .map((episode) => episode.pathEfficiency)
@@ -181,6 +184,7 @@ export function computeBatchMetrics(episodeMetrics) {
 
   return {
     totalEpisodes: total,
+    recordedEpisodes: episodeMetrics.length,
     solved: solvedCount,
     successRate: total > 0 ? solvedCount / total : null,
     meanSpl,
@@ -192,6 +196,7 @@ export function computeBatchMetrics(episodeMetrics) {
       wallHits: sum(episodeMetrics.map((episode) => episode.wallHits)),
       invalidResponses: sum(episodeMetrics.map((episode) => episode.invalidResponses)),
       apiFailures: sum(episodeMetrics.map((episode) => episode.apiFailures)),
+      infraInterruptions: sum(episodeMetrics.map((episode) => episode.infraInterruptions)),
       retryAttempts: sum(episodeMetrics.map((episode) => episode.retryAttempts)),
       tokens: {
         inputTokens: sum(episodeMetrics.map((episode) => episode.tokens.inputTokens)),
