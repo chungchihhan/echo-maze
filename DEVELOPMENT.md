@@ -122,10 +122,10 @@ maze core (`lib/maze/`), so environment semantics cannot drift between them.
   transitions, corridor line-of-sight observation, BFS pathfinding. No React,
   DOM, Cloudflare, D1, or OpenAI dependencies.
 - `benchmark/contract.js` — the versioned v0 contract (policy revision v0.7):
-  route-length tiers, suite defaults, model allowlist, max turns, timeout, retry policy, prompt,
-  strict output schema, and their hashes. A parsed direction that is visibly
-  blocked counts as a wall hit and consumes the turn; schema violations and
-  refusals terminate the episode.
+  route-length tiers, suite defaults, model allowlist, max turns, timeout,
+  retry policy, prompt, strict output schema, and their hashes. A parsed
+  direction that is visibly blocked counts as a wall hit and consumes the
+  turn; schema violations and refusals terminate the episode.
 - `benchmark/fixtures.js` — generates a deterministic suite from `suiteSeed`,
   with equal counts in the 16–23, 24–31, and 32–39 optimal-route tiers. Each
   batch freezes its walls, start, exit, canonical optimal path, and hash under
@@ -145,20 +145,57 @@ maze core (`lib/maze/`), so environment semantics cannot drift between them.
   `manifest.json`, per-episode JSONL transcripts, `episode-summary.json`, and
   `summary.json` / `summary.md`. `--resume` only continues a manifest with the
   same model, provider, contract hashes, suite seed, per-tier count, fixture
-  set, and source provenance;
-  live runs reject dirty worktrees. Manifests retain dirty/source/diff hashes
-  for exploratory dry runs, and actual model identity is derived from raw
-  provider responses.
+  set, and source provenance. Live runs reject dirty worktrees. Manifests
+  retain dirty/source/diff hashes for exploratory dry runs, and actual model
+  identity is derived from raw provider responses.
 - `benchmark/verify.js` — offline verification of fixtures, observation leak
   safety, transition semantics, metrics accounting, and episode isolation.
 
-Commands:
+### Maze suites
+
+Every batch generates a new suite unless `--suite-seed` is provided. A suite
+always contains equal numbers of mazes from all three tiers:
+
+- Easy: optimal route length 16–23 moves
+- Medium: optimal route length 24–31 moves
+- Hard: optimal route length 32–39 moves
+
+`--mazes-per-tier` controls the number generated in each tier. It defaults to
+3, so a normal batch contains 9 mazes. Valid values are 1–100. The combination
+of `suiteSeed`, tier, and index determines each maze; reusing the same seed and
+count therefore reproduces the same suite for another model. Increasing the
+count preserves the existing prefix in each tier and adds more mazes.
+
+When no suite seed is supplied, the runner creates one and records it in the
+manifest and summary. The complete generated snapshots are stored under
+`results/<batch>/fixtures/`. They are spectator and replay artifacts only and
+are never sent to the Walker.
+
+Each episode has a hard limit of 120 turns. Reaching the limit without finding
+the exit produces `unsolved_max_turns`; there is no separate repeated-cycle
+detector.
+
+### Running the benchmark
+
+Run a live 9-maze Luna batch using a named suite:
+
+```bash
+node --env-file=.env.local benchmark/run-batch.js \
+  --provider openai \
+  --model gpt-5.6-luna \
+  --suite-seed luna-2026-08-29-01 \
+  --mazes-per-tier 3 \
+  --out results/luna-2026-08-29-01
+```
+
+Use the same `--suite-seed` and `--mazes-per-tier` when comparing another
+model. Change the output directory so the batches remain separate.
+
+Other useful commands:
 
 ```bash
 npm run benchmark:verify    # verify fixtures + pipeline invariants (offline)
 npm run benchmark:dry-run   # defaults to 3 mazes per tier (9 total)
-OPENAI_API_KEY=... npm run benchmark:run   # live batch against gpt-5.6-luna
-npm run benchmark:run -- --suite-seed comparison-001 --mazes-per-tier 5
 npm run benchmark:run -- --dry-run --resume results/<dir> # resume a compatible dry run
 npm run benchmark:summary -- results/<dir> # regenerate summaries from artifacts
 ```
