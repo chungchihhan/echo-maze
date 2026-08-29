@@ -57,6 +57,7 @@ test("published benchmark index is valid and any published runs are replayable",
   assert.equal(index.version, 1);
   assert.ok(Array.isArray(index.runs));
   assert.ok(index.runs.every((run) => run.max_turn > 0));
+  assert.ok(index.runs.every((run) => run.playback_duration_ms > 0));
 
   const runId = index.runs[0]?.id;
   if (!runId) return;

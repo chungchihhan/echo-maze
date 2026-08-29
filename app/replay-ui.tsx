@@ -51,6 +51,7 @@ export type ReplayRunSummary = {
   spl?: number;
   batch_id?: string;
   policy_revision?: string;
+  playback_duration_ms?: number;
 };
 type ReplayEvent = { sequence: number; createdAt: number; turn: number; phase: string; type: string; payload: unknown };
 type ReplayDetail = {
@@ -69,27 +70,101 @@ type ReplayDetail = {
 type ReplayFrame = { game: ReplayGame; sequence: number; note: string; error: string | null };
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 
-function StreamingText({ text, animate, delay = 0, duration = 700, placeholder = "" }: {
+const THINK_FRAME_MS = 2200;
+const MOVE_FRAME_MS = 6800;
+const END_HOLD_MS = 4000;
+
+function replayFrameDuration(frames: ReplayFrame[], index: number) {
+  if (index >= frames.length - 1) return END_HOLD_MS;
+  return frames[index]?.game.phase === "walker_move" ? MOVE_FRAME_MS : THINK_FRAME_MS;
+}
+
+function replayDuration(frames: ReplayFrame[]) {
+  return frames.reduce((total, _frame, index) => total + replayFrameDuration(frames, index), 0);
+}
+
+function runSlotDuration(run: ReplayRunSummary) {
+  if (typeof run.playback_duration_ms === "number" && run.playback_duration_ms > 0) {
+    return run.playback_duration_ms;
+  }
+  return Math.max(1, run.max_turn ?? 1) * (THINK_FRAME_MS + MOVE_FRAME_MS) + END_HOLD_MS;
+}
+
+function positiveModulo(value: number, divisor: number) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function locateChannelRun(runs: ReplayRunSummary[], now: number) {
+  const durations = runs.map(runSlotDuration);
+  const cycleDuration = durations.reduce((total, duration) => total + duration, 0);
+  if (cycleDuration <= 0) return { runIndex: 0, elapsedMs: 0, durationMs: 1 };
+  const epoch = runs.reduce((earliest, run) => Math.min(earliest, run.created_at), runs[0]?.created_at ?? 0);
+  let cursor = positiveModulo(now - epoch, cycleDuration);
+  for (let index = 0; index < durations.length; index += 1) {
+    if (cursor < durations[index]) {
+      return { runIndex: index, elapsedMs: cursor, durationMs: durations[index] };
+    }
+    cursor -= durations[index];
+  }
+  return { runIndex: 0, elapsedMs: 0, durationMs: durations[0] ?? 1 };
+}
+
+function locateReplayFrame(frames: ReplayFrame[], runElapsedMs: number, runDurationMs: number) {
+  const actualDuration = replayDuration(frames);
+  if (frames.length === 0 || actualDuration <= 0) {
+    return { frameIndex: 0, elapsedMs: 0, remainingMs: THINK_FRAME_MS };
+  }
+  const scaledElapsed = Math.min(
+    actualDuration - 1,
+    Math.max(0, runElapsedMs) * actualDuration / Math.max(1, runDurationMs),
+  );
+  let cursor = scaledElapsed;
+  for (let index = 0; index < frames.length; index += 1) {
+    const duration = replayFrameDuration(frames, index);
+    if (cursor < duration) {
+      const scaleBack = Math.max(1, runDurationMs) / actualDuration;
+      return {
+        frameIndex: index,
+        elapsedMs: cursor,
+        remainingMs: Math.max(50, (duration - cursor) * scaleBack),
+      };
+    }
+    cursor -= duration;
+  }
+  return { frameIndex: frames.length - 1, elapsedMs: 0, remainingMs: END_HOLD_MS };
+}
+
+function StreamingText({ text, animate, delay = 0, duration = 700, placeholder = "", elapsed = 0 }: {
   text: string;
   animate: boolean;
   delay?: number;
   duration?: number;
   placeholder?: string;
+  elapsed?: number;
 }) {
-  const animationKey = `${delay}:${duration}:${text}`;
+  const animationKey = `${delay}:${duration}:${Math.floor(elapsed)}:${text}`;
   const [streamState, setStreamState] = useState({ key: "", text: "", streaming: false });
-  const visibleText = animate && streamState.key === animationKey ? streamState.text : animate ? "" : text;
+  const elapsedProgress = Math.max(0, elapsed - delay);
+  const elapsedCharacters = elapsedProgress >= duration
+    ? text.length
+    : Math.floor(text.length * elapsedProgress / Math.max(1, duration));
+  const initialText = text.slice(0, elapsedCharacters);
+  const visibleText = animate && streamState.key === animationKey ? streamState.text : animate ? initialText : text;
   const streaming = animate && streamState.key === animationKey && streamState.streaming;
 
   useEffect(() => {
     if (!animate) return undefined;
 
     let interval: number | undefined;
-    const timeout = window.setTimeout(() => {
-      let index = 0;
+    const startStreaming = () => {
+      let index = elapsedCharacters;
       const tick = 18;
       const charactersPerTick = Math.max(1, Math.ceil(text.length / Math.max(1, duration / tick)));
-      setStreamState({ key: animationKey, text: "", streaming: true });
+      if (index >= text.length) {
+        setStreamState({ key: animationKey, text, streaming: false });
+        return;
+      }
+      setStreamState({ key: animationKey, text: text.slice(0, index), streaming: true });
       interval = window.setInterval(() => {
         index = Math.min(text.length, index + charactersPerTick);
         setStreamState({ key: animationKey, text: text.slice(0, index), streaming: index < text.length });
@@ -97,13 +172,15 @@ function StreamingText({ text, animate, delay = 0, duration = 700, placeholder =
           if (interval !== undefined) window.clearInterval(interval);
         }
       }, tick);
-    }, delay);
+    };
+    const remainingDelay = Math.max(0, delay - elapsed);
+    const timeout = window.setTimeout(startStreaming, remainingDelay);
 
     return () => {
       window.clearTimeout(timeout);
       if (interval !== undefined) window.clearInterval(interval);
     };
-  }, [animate, animationKey, delay, duration, text]);
+  }, [animate, animationKey, delay, duration, elapsed, elapsedCharacters, text]);
 
   return <span className={streaming ? "streaming-text is-streaming" : "streaming-text"}>{visibleText || placeholder}</span>;
 }
@@ -299,7 +376,7 @@ function MazeViewport({ game, showFullMap }: { game: ReplayGame; showFullMap: bo
   );
 }
 
-function ThoughtStream({ history }: { history: WalkerTurn[] }) {
+function ThoughtStream({ history, frameElapsedMs = 0 }: { history: WalkerTurn[]; frameElapsedMs?: number }) {
   const streamRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const stream = streamRef.current;
@@ -350,7 +427,7 @@ function ThoughtStream({ history }: { history: WalkerTurn[] }) {
               <div className="stage-marker"><span>01</span><i /></div>
               <div className="stage-content">
                 <div className="stage-heading"><strong>ORIENT</strong><span>Where the model thinks it is · May be inaccurate</span></div>
-                <div className="estimate-position"><span>ESTIMATED POSITION</span><strong><StreamingText text={`(${entry.estimatedPosition.x}, ${entry.estimatedPosition.y})`} animate={animate} delay={orientDelay} duration={260} placeholder="—" /></strong></div>
+                <div className="estimate-position"><span>ESTIMATED POSITION</span><strong><StreamingText text={`(${entry.estimatedPosition.x}, ${entry.estimatedPosition.y})`} animate={animate} delay={orientDelay} duration={260} placeholder="—" elapsed={frameElapsedMs} /></strong></div>
               </div>
             </div>
 
@@ -358,7 +435,7 @@ function ThoughtStream({ history }: { history: WalkerTurn[] }) {
               <div className="stage-marker"><span>02</span><i /></div>
               <div className="stage-content">
                 <div className="stage-heading"><strong>NOTES</strong><span>Model-written notes for later turns</span></div>
-                <p><StreamingText text={entry.notes} animate={animate} delay={noteDelay} duration={1300} /></p>
+                <p><StreamingText text={entry.notes} animate={animate} delay={noteDelay} duration={1300} elapsed={frameElapsedMs} /></p>
               </div>
             </div>
 
@@ -369,7 +446,7 @@ function ThoughtStream({ history }: { history: WalkerTurn[] }) {
                 <div className="act-readout">
                   <div className="act-output-row">
                     <span>MODEL OUTPUT</span>
-                    <strong><StreamingText text={`MOVE ${direction.toUpperCase()}`} animate={animate} delay={actionDelay} duration={420} /></strong>
+                    <strong><StreamingText text={`MOVE ${direction.toUpperCase()}`} animate={animate} delay={actionDelay} duration={420} elapsed={frameElapsedMs} /></strong>
                   </div>
                   <div className="environment-result-row">
                     <span>ENVIRONMENT RESULT</span>
@@ -394,13 +471,14 @@ function statusLabel(frame: ReplayFrame, runStatus: string, isLastFrame: boolean
   return runStatus.replaceAll("_", " ").toUpperCase();
 }
 
-function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMap, showReplayLink = false }: {
+function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMap, showReplayLink = false, frameElapsedMs = 0 }: {
   detail: ReplayDetail;
   frame: ReplayFrame;
   isLastFrame: boolean;
   showFullMap: boolean;
   onToggleMap: () => void;
   showReplayLink?: boolean;
+  frameElapsedMs?: number;
 }) {
   const game = frame.game;
   const status = statusLabel(frame, detail.run.status, isLastFrame);
@@ -427,7 +505,7 @@ function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMa
             <span className="visibility-tag">3 STAGES</span>
           </div>
           <div className="thought-disclaimer">Each turn separates maze-provided input, model-written navigation state and action, and environment feedback—not hidden chain of thought.</div>
-          <ThoughtStream history={game.history} />
+          <ThoughtStream history={game.history} frameElapsedMs={frameElapsedMs} />
         </article>
         <article className="agent-card public-maze-card">
           <div className="card-head">
@@ -461,53 +539,74 @@ function ReplayEmpty({ error }: { error?: string | null }) {
 
 export function HomeReplayChannel() {
   const [runs, setRuns] = useState<ReplayRunSummary[]>([]);
-  const [runIndex, setRunIndex] = useState(0);
   const [detail, setDetail] = useState<ReplayDetail | null>(null);
   const [frames, setFrames] = useState<ReplayFrame[]>([]);
-  const [frameIndex, setFrameIndex] = useState(0);
   const [showFullMap, setShowFullMap] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clockMs, setClockMs] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchReplayRuns(controller.signal, false)
-      .then((items) => { setRuns(items); setError(null); })
+      .then((items) => {
+        setRuns(items);
+        setClockMs(Date.now());
+        setError(null);
+      })
       .catch((reason) => { if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : "Could not load recorded runs."); });
     return () => controller.abort();
   }, []);
 
+  const runLocation = locateChannelRun(runs, clockMs);
+  const selected = runs[runLocation.runIndex];
+  const selectedId = selected?.id;
+
   useEffect(() => {
-    const selected = runs[runIndex];
-    if (!selected) return undefined;
+    if (!selectedId) return undefined;
     const controller = new AbortController();
-    fetchReplay(selected.id, controller.signal, false)
+    fetchReplay(selectedId, controller.signal, false)
       .then((nextDetail) => {
         setDetail(nextDetail);
         setFrames(buildReplayFrames(nextDetail));
-        setFrameIndex(0);
+        setClockMs(Date.now());
         setShowFullMap(false);
         setError(null);
       })
       .catch((reason) => { if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : "Could not load this replay."); });
     return () => controller.abort();
-  }, [runIndex, runs]);
+  }, [selectedId]);
+
+  const frameLocation = detail && selected && detail.run.id === selected.id
+    ? locateReplayFrame(frames, runLocation.elapsedMs, runLocation.durationMs)
+    : null;
+  const activeFrameIndex = frameLocation?.frameIndex;
+  const remainingFrameMs = frameLocation?.remainingMs;
 
   useEffect(() => {
-    if (!detail || frames.length < 2) return undefined;
-    const atEnd = frameIndex >= frames.length - 1;
-    const frameDelay = atEnd ? 4000 : frames[frameIndex]?.game.phase === "walker_move" ? 6800 : 2200;
-    const timer = window.setTimeout(() => {
-      if (atEnd && runs.length === 1) setFrameIndex(0);
-      else if (atEnd) setRunIndex((index) => runs.length > 0 ? (index + 1) % runs.length : 0);
-      else setFrameIndex((index) => Math.min(index + 1, frames.length - 1));
-    }, frameDelay);
-    return () => window.clearTimeout(timer);
-  }, [detail, frameIndex, frames, runs.length]);
+    if (activeFrameIndex === undefined || remainingFrameMs === undefined) return undefined;
+    const timer = window.setTimeout(
+      () => setClockMs(Date.now()),
+      Math.max(50, Math.ceil(remainingFrameMs) + 20),
+    );
+    const syncWhenVisible = () => {
+      if (document.visibilityState === "visible") setClockMs(Date.now());
+    };
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+    };
+  }, [activeFrameIndex, remainingFrameMs, selectedId]);
 
   if (error && !detail) return <ReplayEmpty error={error} />;
+  const frameIndex = frameLocation?.frameIndex ?? 0;
   const frame = frames[frameIndex];
-  if (!detail || !frame) return <ReplayEmpty />;
-  return <ReplayObservation detail={detail} frame={frame} isLastFrame={frameIndex === frames.length - 1} showFullMap={showFullMap} onToggleMap={() => setShowFullMap((value) => !value)} showReplayLink />;
+  if (detail && frames.length > 0 && selected && detail.run.id !== selected.id) {
+    const previousFrame = frames[frames.length - 1];
+    return <ReplayObservation detail={detail} frame={previousFrame} isLastFrame showFullMap={showFullMap} onToggleMap={() => setShowFullMap((value) => !value)} showReplayLink />;
+  }
+  if (!detail || !frame || !selected) return <ReplayEmpty />;
+  return <ReplayObservation detail={detail} frame={frame} isLastFrame={frameIndex === frames.length - 1} showFullMap={showFullMap} onToggleMap={() => setShowFullMap((value) => !value)} showReplayLink frameElapsedMs={frameLocation?.elapsedMs ?? 0} />;
 }
 
 export function ReplayLibrary() {

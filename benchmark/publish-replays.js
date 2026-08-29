@@ -11,6 +11,10 @@ import { fileURLToPath } from "node:url";
 
 import { fixtureCells, loadFixture } from "./fixtures.js";
 
+const THINK_FRAME_MS = 2200;
+const MOVE_FRAME_MS = 6800;
+const END_HOLD_MS = 4000;
+
 function parseArgs(argv) {
   const source = argv[0];
   if (!source) throw new Error("Usage: node benchmark/publish-replays.js results/<batch> [--out public/replay-data]");
@@ -89,6 +93,18 @@ function publicEvents(events) {
   return output;
 }
 
+function playbackDurationMs(events) {
+  const durations = [THINK_FRAME_MS];
+  for (const event of events) {
+    if (event.type === "solo_walker_response") durations.push(MOVE_FRAME_MS);
+    else if (event.type === "solo_walker_move" || event.type === "environment_move" || event.type === "agent_error") {
+      durations.push(THINK_FRAME_MS);
+    }
+  }
+  durations[durations.length - 1] = END_HOLD_MS;
+  return durations.reduce((total, duration) => total + duration, 0);
+}
+
 function publishedStatus(summary, transcript) {
   if (summary.status !== "api_failure") return summary.status;
   const lastModelResult = transcript.filter((event) => event.type === "model_result").at(-1);
@@ -114,6 +130,7 @@ async function main() {
     const transcript = parseJsonLines(rawTranscript);
     const summary = JSON.parse(rawSummary);
     const events = publicEvents(transcript);
+    const playbackDuration = playbackDurationMs(events);
     const id = `${manifest.batchId}--${fixtureId}`;
     const status = publishedStatus(summary, transcript);
     const startedAt = transcript.find((event) => event.type === "episode_start")?.startedAt ?? manifest.createdAt;
@@ -128,6 +145,7 @@ async function main() {
         resultClass: manifest.resultClass,
         provider: manifest.provider,
         originalStatus: summary.status,
+        playbackDurationMs: playbackDuration,
       },
       run: {
         id,
@@ -174,6 +192,7 @@ async function main() {
       spl: summary.metrics.spl,
       batch_id: manifest.batchId,
       policy_revision: manifest.policyRevision,
+      playback_duration_ms: playbackDuration,
     });
   }
 
