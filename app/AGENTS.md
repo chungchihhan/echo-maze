@@ -6,11 +6,13 @@ Applies to `app/**`, including the browser UI, layout, styling, and route-handle
 
 ## Purpose
 
-This module owns the Solo Walker presentation: maze rendering, the client-side turn loop, and replay controls. Environment semantics (generation, movement, line-of-sight observation) live in [`lib/AGENTS.md`](../lib/AGENTS.md); server-only agent and D1 behavior is governed by [`app/api/AGENTS.md`](api/AGENTS.md).
+This module owns the public Solo Walker replay presentation: the automatic homepage observation channel, replay library, detailed replay controls, and maze rendering. Environment semantics (generation, movement, line-of-sight observation) live in [`lib/AGENTS.md`](../lib/AGENTS.md); server-only agent and D1 behavior is governed by [`app/api/AGENTS.md`](api/AGENTS.md).
 
 ## Start here
 
-- `app/page.tsx` — client game state, turn loop, replay playback; consumes the shared core from `../lib/maze/index.js`
+- `app/page.tsx` — server-rendered public homepage shell and automatic replay channel entry point
+- `app/replay-ui.tsx` — shared replay reconstruction, homepage rotation, library cards, detailed controls, and maze presentation
+- `app/replays/` — replay library and shareable run detail routes
 - `app/api/agent/route.ts` — model prompt, structured response validation, timeout, and retry boundary
 - `app/api/replays/route.ts` — replay persistence and export/listing API
 - `app/globals.css` — product UI styling and responsive layout
@@ -18,10 +20,11 @@ This module owns the Solo Walker presentation: maze rendering, the client-side t
 
 ## Architecture and boundaries
 
-- `page.tsx` is a client component. It keeps live game state, sends only the Walker-visible observation (built via `lib/maze`'s `walkerObservation`) plus current-run conversation to `/api/agent`, applies one returned move through the shared core's movement functions, and queues replay events to `/api/replays`. It must not re-implement maze semantics locally.
+- The public homepage is observation-only: it fetches recorded runs from `/api/replays`, rotates them automatically, and exposes no playback controls except the Walker/full-map view toggle.
+- `replay-ui.tsx` reconstructs every visual frame from the append-only event stream. It must not re-implement maze semantics locally or call `/api/agent`.
 - The spectator can reveal the full maze in the UI, but spectator-only map state must not enter the Solo Walker request payload.
 - Keep browser code independent of Cloudflare bindings, API keys, D1 clients, and server-only imports. Cross the boundary through the existing HTTP routes.
-- Keep the current product framing as one Solo Walker powered by `gpt-5.6-luna`; do not reintroduce a two-agent Navigator/Walker UI without an explicit product decision.
+- Keep the current product framing as an observable Solo Walker benchmark; do not reintroduce a two-agent Navigator/Walker UI without an explicit product decision.
 
 ## Commands
 

@@ -118,6 +118,10 @@ test("v0 fixtures are intact, unique, and BFS-verified", async () => {
   assert.equal(SCHEMA_HASH, sha256(RESPONSE_SCHEMA));
   assert.equal(PROMPT_HASH, sha256(WALKER_PROMPT));
   assert.notEqual(PROMPT_HASH, SCHEMA_HASH);
+  assert.deepEqual(RESPONSE_SCHEMA.required, ["estimated_position", "notes", "action"]);
+  assert.equal(Object.hasOwn(RESPONSE_SCHEMA.properties, "observation_summary"), false);
+  assert.match(WALKER_PROMPT, /use this field in any way you find useful/i);
+  assert.doesNotMatch(WALKER_PROMPT, /prefer an open branch|backtrack from dead ends|if the exit is visible/i);
   assert.deepEqual(MODEL_ALLOWLIST, [
     "gpt-5.6-luna",
     "openai/gpt-5.6-luna",
@@ -138,11 +142,9 @@ test("policy v0.1: a visibly blocked direction is a wall hit, not a termination"
     adapter: async ({ observation }) => ({
       attempts: [{ attempt: 1, latencyMs: 1, errorCategory: null, usage: null }],
       parsed: {
-        observation_summary: "s",
-        reasoning_summary: "r",
-        believed_position: { x: 0, y: 0 },
-        coordinate_note: "c",
-        direction: observation.blockedDirections[0],
+        estimated_position: { x: 0, y: 0 },
+        notes: "c",
+        action: observation.blockedDirections[0],
       },
       error: null,
     }),
@@ -287,7 +289,7 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
 });
 
 test("tolerant JSON extraction (policy v0.2) parses formatting, never content", () => {
-  const good = JSON.stringify({ observation_summary: "s", direction: "up" });
+  const good = JSON.stringify({ notes: "s", action: "up" });
   assert.deepEqual(extractJsonObject(good), JSON.parse(good));
   assert.deepEqual(
     extractJsonObject("```json\n" + good + "\n```"),
@@ -311,13 +313,13 @@ test("tolerant JSON extraction (policy v0.2) parses formatting, never content", 
 
 test("OpenAI adapter records attempts and never repairs invalid output", async () => {
   // Offline validation helpers.
-  const validDecision = { observation_summary: "s", reasoning_summary: "r", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up" };
+  const validDecision = { estimated_position: { x: 0, y: 0 }, notes: "c", action: "up" };
   assert.equal(validateParsed(validDecision), null);
-  assert.equal(validateParsed({ direction: "sideways" }), "schema_violation");
-  assert.equal(validateParsed({ ...validDecision, observation_summary: "x".repeat(221) }), "schema_violation");
-  assert.equal(validateParsed({ ...validDecision, believed_position: { x: 101, y: 0 } }), "schema_violation");
+  assert.equal(validateParsed({ action: "sideways" }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, notes: "x".repeat(281) }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, estimated_position: { x: 101, y: 0 } }), "schema_violation");
   assert.equal(validateParsed({ ...validDecision, extra: true }), "schema_violation");
-  assert.equal(validateParsed({ ...validDecision, believed_position: { x: 0, y: 0, extra: true } }), "schema_violation");
+  assert.equal(validateParsed({ ...validDecision, estimated_position: { x: 0, y: 0, extra: true } }), "schema_violation");
   assert.deepEqual(extractOutputText({ output_text: "{\"a\":1}" }), { text: "{\"a\":1}", refusal: null });
   assert.deepEqual(extractOutputText({ output: [{ content: [{ type: "refusal", refusal: "no" }] }] }), { text: null, refusal: "no" });
 
@@ -335,8 +337,8 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
       model: "gpt-5.6-luna",
       usage: { input_tokens: 5, output_tokens: 5, total_tokens: 10 },
       output_text: JSON.stringify({
-        observation_summary: "s", reasoning_summary: "r", coordinate_note: "c",
-        believed_position: { x: 0, y: 0 }, direction: "up",
+        estimated_position: { x: 0, y: 0 }, notes: "c",
+        action: "up",
       }),
     }), { status: 200, headers: { "x-request-id": "req_1" } });
   };
@@ -351,7 +353,7 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
   assert.equal(result.attempts[0].errorCategory, "server_error");
   assert.equal(result.attempts[1].errorCategory, null);
   assert.equal(result.error, null);
-  assert.equal(result.parsed.direction, "up");
+  assert.equal(result.parsed.action, "up");
   assert.equal(calls[0].model, "gpt-5.6-luna");
 
   // Invalid JSON output: recorded, NOT retried.
@@ -374,26 +376,24 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
   assert.throws(() => createOpenAIAdapter(""));
 });
 
-test("field normalization (policy v0.4) re-keys aliases without inventing content", () => {
+test("field normalization re-keys aliases without inventing content", () => {
   assert.deepEqual(
-    normalizeDecisionFields({ observation_summary: "s", reasoning: "r", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up" }),
-    { observation_summary: "s", coordinate_note: "c", believed_position: { x: 0, y: 0 }, direction: "up", reasoning_summary: "r" },
+    normalizeDecisionFields({ navigationNote: "c", positionEstimate: { x: 0, y: 0 }, direction: "up" }),
+    { notes: "c", estimated_position: { x: 0, y: 0 }, action: "up" },
   );
   assert.deepEqual(
-    normalizeDecisionFields({ observationSummary: "s", reasoningSummary: "r", coordinateNote: "c", believedPosition: { x: 1, y: 2 }, move: "left" }),
-    { observation_summary: "s", reasoning_summary: "r", coordinate_note: "c", believed_position: { x: 1, y: 2 }, direction: "left" },
+    normalizeDecisionFields({ coordinateNote: "c", believedPosition: { x: 1, y: 2 }, move: "left" }),
+    { notes: "c", estimated_position: { x: 1, y: 2 }, action: "left" },
   );
   // Canonical field wins over alias.
-  const both = normalizeDecisionFields({ reasoning_summary: "canonical", reasoning: "alias" });
-  assert.equal(both.reasoning_summary, "canonical");
+  const both = normalizeDecisionFields({ notes: "canonical", note: "alias" });
+  assert.equal(both.notes, "canonical");
   // Missing content still fails validation after normalization.
-  assert.equal(validateParsed(normalizeDecisionFields({ reasoning: "r" })), "schema_violation");
+  assert.equal(validateParsed(normalizeDecisionFields({ note: "n" })), "schema_violation");
   const unknown = normalizeDecisionFields({
-    observation_summary: "s",
-    reasoning_summary: "r",
-    coordinate_note: "c",
-    believed_position: { x: 0, y: 0 },
-    direction: "up",
+    notes: "c",
+    estimated_position: { x: 0, y: 0 },
+    action: "up",
     extra: true,
   });
   assert.equal(unknown.extra, true);
@@ -409,8 +409,8 @@ test("OpenAI adapter forwards requested model and doubles incomplete-output budg
   const delays = [];
   const requestedModel = "openai/gpt-5.6-luna";
   const good = JSON.stringify({
-    observation_summary: "s", reasoning_summary: "r", coordinate_note: "c",
-    believed_position: { x: 0, y: 0 }, direction: "up",
+    estimated_position: { x: 0, y: 0 }, notes: "c",
+    action: "up",
   });
   const fetchImpl = async (_url, init) => {
     bodies.push(JSON.parse(init.body));
@@ -482,8 +482,8 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
   /** @type {any[]} */
   const bodies = [];
   const good = JSON.stringify({
-    observation_summary: "s", reasoning_summary: "r", coordinate_note: "c",
-    believed_position: { x: 0, y: 0 }, direction: "up",
+    estimated_position: { x: 0, y: 0 }, notes: "c",
+    action: "up",
   });
   const fetchImpl = async (_url, init) => {
     const body = JSON.parse(init.body);
@@ -491,7 +491,7 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
     if (bodies.length === 1) {
       return new Response(JSON.stringify({
         id: "gen_1", model: "m", usage: { prompt_tokens: 10, completion_tokens: 900, total_tokens: 910 },
-        choices: [{ finish_reason: "length", message: { role: "assistant", content: '{"observation_summary":' } }],
+        choices: [{ finish_reason: "length", message: { role: "assistant", content: '{"notes":' } }],
       }), { status: 200 });
     }
     return new Response(JSON.stringify({
@@ -514,7 +514,7 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
   assert.equal(result.attempts[0].errorCategory, "incomplete_output");
   assert.deepEqual(result.attempts.map((attempt) => attempt.modelRequested), [requestedModel, requestedModel]);
   assert.equal(result.error, null);
-  assert.equal(result.parsed.direction, "up");
+  assert.equal(result.parsed.action, "up");
 });
 
 test("retry policy honors Retry-After and bounded exponential fallback", () => {
