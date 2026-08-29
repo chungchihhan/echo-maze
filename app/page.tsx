@@ -279,7 +279,8 @@ function makeInitialGame(stable = false): GameState {
 }
 
 function wallStyle(cell: Cell): CSSProperties {
-  const wallColor = "rgba(147, 179, 190, 0.72)";
+  // Wall stroke derives from the Factory pale-stone token (--wall-stroke in globals.css).
+  const wallColor = "var(--wall-stroke)";
   return {
     borderTopColor: cell.walls.up ? wallColor : "transparent",
     borderRightColor: cell.walls.right ? wallColor : "transparent",
