@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
 
 export const BENCHMARK_VERSION = "v0";
-export const POLICY_REVISION = "v0.4";
+export const POLICY_REVISION = "v0.6";
 export const GENERATOR_VERSION = "maze-gen-1";
 export const OBSERVATION_VERSION = "corridor-sightline-v1";
 
@@ -89,20 +89,16 @@ export const HIDDEN_STATE_POLICY =
   "spectator state may enter the prompt.";
 
 export const WALKER_PROMPT = [
-  "You are the only agent inside Echo Maze.",
-  "You cannot see a map, your absolute coordinates, or any hidden state. You have no route tool and no notebook.",
-  "Your sole memory is the complete conversation from this run: prior observations, your prior reasoning summaries and decisions, and movement outcomes.",
-  "Maintain your own relative coordinate system in that conversation. The starting cell is (0,0); moving right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1.",
-  "A successful prior move changes your coordinate by exactly one. A blocked prior move leaves it unchanged. Recalculate your current believed coordinate from the history every turn.",
-  "Write one coordinate note for the current cell that records useful open directions, explored branches, dead ends, or a possible revisit. This note becomes part of the next turn's conversation.",
-  "The current observation shows open and blocked absolute directions plus straight line-of-sight corridors. A wall hides everything beyond it.",
-  "Use the conversation to build and revise a mental route: remember branches already attempted, recognize likely revisits from matching views and action history, and backtrack from dead ends.",
-  "Never claim certainty about a location or unseen geometry. Never invent coordinates.",
-  "If the exit is visible, choose the open direction whose sightline contains isExit=true.",
-  "Otherwise prefer an open branch you believe has not been explored; when necessary, deliberately backtrack.",
-  "Return a concise English observation summary and a concise, useful English reasoning summary that makes your memory strategy observable.",
-  "Write the coordinate note in English as well.",
-  "Choose exactly one direction from the currently open directions.",
+  "You are the Walker inside Echo Maze.",
+  "Your goal is to reach the exit.",
+  "You cannot see the complete maze, your absolute position, or any hidden state. You have no route-finding tool.",
+  "Each turn, you receive your current local observation, open and blocked absolute directions, straight line-of-sight information, the result of your previous action, and the complete conversation from the current run.",
+  "The starting cell is defined as relative position (0,0). A successful move right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1. A blocked move does not change your position.",
+  "Return exactly three fields.",
+  "estimated_position: Your current estimate of your relative position. This is your own estimate and may be wrong.",
+  "notes: Notes that will be included in later turns of this run. You may use this field in any way you find useful. Choose your own format and decide what is worth recording.",
+  "action: Choose exactly one of up, right, down, or left.",
+  "Explore the maze using your own strategy and reach the exit. Base your decisions only on the provided observations and conversation.",
 ].join(" ");
 
 export const RESPONSE_SCHEMA_NAME = "solo_walker_decision";
@@ -111,9 +107,7 @@ export const RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    observation_summary: { type: "string", minLength: 1, maxLength: 220 },
-    reasoning_summary: { type: "string", minLength: 1, maxLength: 360 },
-    believed_position: {
+    estimated_position: {
       type: "object",
       additionalProperties: false,
       properties: {
@@ -122,10 +116,10 @@ export const RESPONSE_SCHEMA = {
       },
       required: ["x", "y"],
     },
-    coordinate_note: { type: "string", minLength: 1, maxLength: 280 },
-    direction: { type: "string", enum: ["up", "right", "down", "left"] },
+    notes: { type: "string", minLength: 1, maxLength: 280 },
+    action: { type: "string", enum: ["up", "right", "down", "left"] },
   },
-  required: ["observation_summary", "reasoning_summary", "believed_position", "coordinate_note", "direction"],
+  required: ["estimated_position", "notes", "action"],
 };
 
 /**
@@ -192,6 +186,9 @@ export const RULES = {
     "Policy v0.4: well-formed decisions under unambiguous field aliases (e.g. reasoning -> reasoning_summary, " +
     "believedPosition -> believed_position) are re-keyed to the canonical schema before validation. Canonical " +
     "fields always win; values are never invented; decisions missing required content still fail.",
+  outputFieldPolicy:
+    "Policy v0.6: the environment observation is not repeated by the model. Each decision contains only a " +
+    "self-reported estimated position, free-form notes for later turns, and an action.",
   scoring: {
     pathEfficiency: "optimalPathLength / successfulMoves for solved episodes; null for unsolved episodes",
     spl: "success * optimalPathLength / max(optimalPathLength, successfulMoves)",

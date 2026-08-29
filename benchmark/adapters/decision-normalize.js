@@ -12,11 +12,9 @@
 
 /** @type {Record<string, string[]>} canonical field -> accepted aliases */
 const FIELD_ALIASES = {
-  observation_summary: ["observationSummary", "observation"],
-  reasoning_summary: ["reasoningSummary", "reasoning", "thoughts", "thinking"],
-  coordinate_note: ["coordinateNote", "coordinate_notes", "note", "notes"],
-  believed_position: ["believedPosition", "position", "relative_position"],
-  direction: ["move_direction", "chosen_direction", "move"],
+  estimated_position: ["estimatedPosition", "position_estimate", "positionEstimate", "believed_position", "believedPosition", "position", "relative_position"],
+  notes: ["navigation_note", "navigationNote", "coordinate_note", "coordinateNote", "coordinate_notes", "note"],
+  action: ["direction", "move_direction", "chosen_direction", "move"],
 };
 
 /**

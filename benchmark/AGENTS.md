@@ -10,7 +10,7 @@ This module implements the headless Echo Maze Benchmark: a versioned contract, i
 
 ## Start here
 
-- `contract.js` — versioned v0 contract (policy revision v0.4): fixture order, model allowlist, turn/timeout/retry policy, prompt, schema, output framing, and their hashes
+- `contract.js` — versioned v0 contract (policy revision v0.6): fixture order, model allowlist, turn/timeout/retry policy, prompt, schema, output framing, and their hashes
 - `fixtures/` + `fixtures.js` — ten frozen maze snapshots with content hashes; runtime loads snapshots and never re-rolls seeds
 - `adapters/openai-adapter.js`, `adapters/openrouter-adapter.js` — provider transports; transport retries recorded with exponential backoff honoring Retry-After; invalid model output recorded, never repaired
 - `adapters/retry-delay.js` — shared bounded backoff and Retry-After parsing used by both live adapters
@@ -18,12 +18,13 @@ This module implements the headless Echo Maze Benchmark: a versioned contract, i
 - `episode.js` — episode state machine emitting append-only events
 - `metrics.js` — all metrics recomputed from event logs (SPL, path efficiency null when unsolved, latency percentiles, token usage)
 - `run-batch.js` / `summarize.js` / `verify.js` — batch CLI, artifact regeneration, invariant verification
+- `publish-replays.js` — converts a completed local batch into compact, commit-safe assets under `public/replay-data` for the public observation channel
 - `provenance.js` — git cleanliness, working-tree content hash, and diff hash for artifact provenance
 
 ## Architecture and boundaries
 
 - Prompts receive only the narrow observation DTO from `lib/maze` plus the current run's conversation. Full mazes, exit coordinates, seeds, optimal routes, or spectator state must not enter prompts.
-- Policy v0.4: a parsed direction that is visibly blocked counts as a wall hit consuming the turn; the episode continues. Schema violations and refusals terminate the episode as `invalid_output` without repair.
+- Policy v0.6: model output contains only `estimated_position`, free-form `notes`, and `action`; the environment observation is not repeated. A parsed blocked action counts as a wall hit consuming the turn; schema violations and refusals terminate the episode as `invalid_output` without repair.
 - Metrics come from event logs, never from in-memory counters.
 - Filesystem artifacts under `results/` (gitignored) are canonical; D1, if added later, is only a projection.
 - Fixture regeneration (`scripts/generate-fixtures.mjs --force`) is an intentional contract change requiring hash review.

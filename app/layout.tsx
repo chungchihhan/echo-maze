@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Echo Maze — Observable Agent Cooperation",
-  description: "An AI Walker navigating a hidden maze through observation, memory, and self-maintained coordinates.",
+  title: "Echo Maze — Observable AI Navigation Benchmark",
+  description: "Watch AI agents navigate hidden mazes using local observations and conversation-only memory.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
@@ -16,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-Hant">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

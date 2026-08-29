@@ -72,7 +72,7 @@ export async function runEpisode({ fixture, adapter, maxTurns = 120, onEvent = (
       return end(onEvent, status, reason, turn);
     }
 
-    const direction = /** @type {string} */ (result.parsed.direction);
+    const direction = /** @type {string} */ (result.parsed.action);
     // Policy v0.1: a parsed direction that is visibly blocked is NOT a repair
     // opportunity and does not terminate the episode — it flows into
     // applyMove below as a normal attempted move with result "blocked"
@@ -81,11 +81,9 @@ export async function runEpisode({ fixture, adapter, maxTurns = 120, onEvent = (
     conversation.push({
       turn,
       observation,
-      observationSummary: result.parsed.observation_summary,
-      reasoning: result.parsed.reasoning_summary,
-      believedPosition: result.parsed.believed_position,
-      coordinateNote: result.parsed.coordinate_note,
-      direction,
+      estimatedPosition: result.parsed.estimated_position,
+      notes: result.parsed.notes,
+      action: direction,
       result: null,
     });
 
