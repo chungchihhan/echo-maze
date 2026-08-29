@@ -109,7 +109,7 @@ async function main() {
     const [rawTranscript, rawSummary, fixture] = await Promise.all([
       readFile(path.join(episodeDir, "transcript.jsonl"), "utf8"),
       readFile(path.join(episodeDir, "episode-summary.json"), "utf8"),
-      loadFixture(fixtureId),
+      loadFixture(source, fixtureId),
     ]);
     const transcript = parseJsonLines(rawTranscript);
     const summary = JSON.parse(rawSummary);

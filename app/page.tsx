@@ -1,4 +1,4 @@
-import { MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
+import { MAX_ROUTE_LENGTH, MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
 import { HomeReplayChannel } from "./replay-ui";
 import { SiteHeader } from "./site-header";
 
@@ -22,7 +22,7 @@ export default function HomePage() {
 
       <section className="benchmark-note" aria-label="Benchmark rules">
         <span>CONVERSATION-ONLY MEMORY</span>
-        <p>No map · no route tool · no notebook · minimum optimal route {MIN_ROUTE_LENGTH} moves</p>
+        <p>No map · no route tool · no notebook · optimal routes {MIN_ROUTE_LENGTH}–{MAX_ROUTE_LENGTH} moves</p>
       </section>
     </main>
   );

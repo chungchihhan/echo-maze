@@ -121,14 +121,15 @@ maze core (`lib/maze/`), so environment semantics cannot drift between them.
 - `lib/maze/` — pure maze core: types, seeded generation, movement
   transitions, corridor line-of-sight observation, BFS pathfinding. No React,
   DOM, Cloudflare, D1, or OpenAI dependencies.
-- `benchmark/contract.js` — the versioned v0 contract (policy revision v0.4):
-  fixture order, model allowlist, max turns, timeout, retry policy, prompt,
+- `benchmark/contract.js` — the versioned v0 contract (policy revision v0.7):
+  route-length tiers, suite defaults, model allowlist, max turns, timeout, retry policy, prompt,
   strict output schema, and their hashes. A parsed direction that is visibly
   blocked counts as a wall hit and consumes the turn; schema violations and
   refusals terminate the episode.
-- `benchmark/fixtures/` — ten immutable maze snapshots (`fixtureId`, seed as
-  provenance, frozen walls, start, exit, canonical optimal path,
-  `fixtureHash`). Runtime always loads snapshots; it never re-rolls seeds.
+- `benchmark/fixtures.js` — generates a deterministic suite from `suiteSeed`,
+  with equal counts in the 16–23, 24–31, and 32–39 optimal-route tiers. Each
+  batch freezes its walls, start, exit, canonical optimal path, and hash under
+  `results/<batch>/fixtures/` for resume, summary regeneration, and replay.
 - `benchmark/adapters/` — OpenAI Responses API and OpenRouter adapters. Each
   request records the requested and provider-returned model, applies the same
   schema gate, and records transport retries with exponential backoff and
@@ -143,7 +144,8 @@ maze core (`lib/maze/`), so environment semantics cannot drift between them.
 - `benchmark/run-batch.js` — sequential one-command batch runner producing
   `manifest.json`, per-episode JSONL transcripts, `episode-summary.json`, and
   `summary.json` / `summary.md`. `--resume` only continues a manifest with the
-  same model, provider, contract hashes, fixture set, and source provenance;
+  same model, provider, contract hashes, suite seed, per-tier count, fixture
+  set, and source provenance;
   live runs reject dirty worktrees. Manifests retain dirty/source/diff hashes
   for exploratory dry runs, and actual model identity is derived from raw
   provider responses.
@@ -154,8 +156,9 @@ Commands:
 
 ```bash
 npm run benchmark:verify    # verify fixtures + pipeline invariants (offline)
-npm run benchmark:dry-run   # full 10-episode pipeline with the mock adapter
+npm run benchmark:dry-run   # defaults to 3 mazes per tier (9 total)
 OPENAI_API_KEY=... npm run benchmark:run   # live batch against gpt-5.6-luna
+npm run benchmark:run -- --suite-seed comparison-001 --mazes-per-tier 5
 npm run benchmark:run -- --dry-run --resume results/<dir> # resume a compatible dry run
 npm run benchmark:summary -- results/<dir> # regenerate summaries from artifacts
 ```

@@ -2,41 +2,28 @@
  * Echo Maze Benchmark v0 contract.
  *
  * Everything that must stay fixed across runs and models is defined here:
- * benchmark version, fixture order, model allowlist, observation semantics,
+ * benchmark version, route-length tiers, model allowlist, observation semantics,
  * coordinate system, turn/timeout/retry policy, output schema, and the exact
  * prompt. Hashes over the prompt, schema, and rules are computed from these
  * definitions so any drift changes the recorded hash.
  */
 
 import { createHash } from "node:crypto";
-import { MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
+import { MAX_ROUTE_LENGTH, MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
 
 export const BENCHMARK_VERSION = "v0";
-export const POLICY_REVISION = "v0.6";
-export const GENERATOR_VERSION = "maze-gen-1";
+export const POLICY_REVISION = "v0.7";
+export const GENERATOR_VERSION = "maze-gen-2";
 export const OBSERVATION_VERSION = "corridor-sightline-v1";
 
-/**
- * Seeds are provenance only. The runtime loads immutable fixture snapshots;
- * it never re-rolls a maze from a seed. Fixture files live in ./fixtures and
- * are named after this order.
- */
-export const FIXTURE_SEEDS = [
-  "ECHO-BENCH-V0-01",
-  "ECHO-BENCH-V0-02",
-  "ECHO-BENCH-V0-03",
-  "ECHO-BENCH-V0-04",
-  "ECHO-BENCH-V0-05",
-  "ECHO-BENCH-V0-06",
-  "ECHO-BENCH-V0-07",
-  "ECHO-BENCH-V0-08",
-  "ECHO-BENCH-V0-09",
-  "ECHO-BENCH-V0-10",
+/** Route-length tiers used by every generated benchmark suite. */
+export const ROUTE_LENGTH_TIERS = [
+  { id: "easy", label: "Easy", min: 16, max: 23 },
+  { id: "medium", label: "Medium", min: 24, max: 31 },
+  { id: "hard", label: "Hard", min: 32, max: 39 },
 ];
-
-export const FIXTURE_IDS = FIXTURE_SEEDS.map(
-  (seed, index) => `echo-maze-bench-${BENCHMARK_VERSION}-${String(index + 1).padStart(2, "0")}`,
-);
+export const DEFAULT_MAZES_PER_TIER = 3;
+export const MAX_MAZES_PER_TIER = 100;
 
 /** Models permitted in benchmark runs (exact provider model IDs). */
 export const MODEL_ALLOWLIST = [
@@ -153,6 +140,10 @@ export const RULES = {
   observationVersion: OBSERVATION_VERSION,
   mazeSize: 9,
   minRouteLength: MIN_ROUTE_LENGTH,
+  maxRouteLength: MAX_ROUTE_LENGTH,
+  routeLengthTiers: ROUTE_LENGTH_TIERS,
+  defaultMazesPerTier: DEFAULT_MAZES_PER_TIER,
+  maxMazesPerTier: MAX_MAZES_PER_TIER,
   coordinateSystem: COORDINATE_SYSTEM,
   hiddenStatePolicy: HIDDEN_STATE_POLICY,
   maxTurns: MAX_TURNS,
@@ -205,7 +196,9 @@ export function contractDescriptor() {
     policyRevision: POLICY_REVISION,
     generatorVersion: GENERATOR_VERSION,
     observationVersion: OBSERVATION_VERSION,
-    fixtureOrder: FIXTURE_IDS,
+    routeLengthTiers: ROUTE_LENGTH_TIERS,
+    defaultMazesPerTier: DEFAULT_MAZES_PER_TIER,
+    maxMazesPerTier: MAX_MAZES_PER_TIER,
     modelAllowlist: MODEL_ALLOWLIST,
     defaultModel: DEFAULT_MODEL,
     maxTurns: MAX_TURNS,

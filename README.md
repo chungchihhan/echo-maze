@@ -22,7 +22,7 @@ can reveal the complete maze to compare the Walker's belief with reality.
 ## Current game
 
 - One autonomous Walker powered by `gpt-5.6-luna`
-- Random solvable mazes with a minimum optimal route length
+- Seeded benchmark suites generated per run across three optimal-route tiers: 16–23, 24–31, and 32–39 moves
 - Corridor-based line of sight; walls hide everything behind them
 - Conversation-only memory within the current run
 - No full map, route-finding tool, or external notebook for the Walker

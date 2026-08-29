@@ -21,18 +21,19 @@ import {
   walkerObservation,
 } from "../lib/maze/index.js";
 import {
-  FIXTURE_IDS,
+  DEFAULT_MAZES_PER_TIER,
   MAX_TURNS,
   MODEL_ALLOWLIST,
   PROMPT_HASH,
   RESPONSE_SCHEMA,
+  ROUTE_LENGTH_TIERS,
   SCHEMA_HASH,
   WALKER_PROMPT,
   sha256,
 } from "../benchmark/contract.js";
 import {
   computeFixtureHash,
-  loadAllFixtures,
+  generateFixtureSuite,
   verifyFixture,
 } from "../benchmark/fixtures.js";
 import { runEpisode } from "../benchmark/episode.js";
@@ -52,12 +53,13 @@ import { regenerateSummary } from "../benchmark/summarize.js";
 import { runBatch } from "../benchmark/run-batch.js";
 
 test("maze core is deterministic and semantically stable", () => {
-  const a = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24 });
-  const b = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24 });
+  const a = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
+  const b = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
   assert.deepEqual(a.cells, b.cells);
   assert.deepEqual(a.start, b.start);
   assert.deepEqual(a.exit, b.exit);
   assert.ok(a.routeLength >= 24);
+  assert.ok(a.routeLength <= 31);
 
   // Blocked moves keep position; successful moves change it by exactly one.
   const cells = a.cells;
@@ -102,18 +104,26 @@ test("observation DTO never exposes hidden state", () => {
   }
 });
 
-test("v0 fixtures are intact, unique, and BFS-verified", async () => {
-  const fixtures = await loadAllFixtures();
-  assert.equal(fixtures.length, 10);
-  assert.deepEqual(fixtures.map((fixture) => fixture.fixtureId), FIXTURE_IDS);
-  assert.equal(new Set(fixtures.map((fixture) => fixture.seed)).size, 10);
-  assert.equal(new Set(fixtures.map((fixture) => fixture.fixtureHash)).size, 10);
-  for (const fixture of fixtures) {
+test("generated v0 suites are deterministic, stratified, unique, and BFS-verified", () => {
+  const fixtures = generateFixtureSuite("unit-suite", DEFAULT_MAZES_PER_TIER);
+  assert.equal(fixtures.length, 9);
+  assert.equal(new Set(fixtures.map((fixture) => fixture.seed)).size, 9);
+  assert.equal(new Set(fixtures.map((fixture) => fixture.fixtureHash)).size, 9);
+  assert.deepEqual(generateFixtureSuite("unit-suite", DEFAULT_MAZES_PER_TIER), fixtures);
+  assert.notDeepEqual(
+    generateFixtureSuite("another-suite", DEFAULT_MAZES_PER_TIER).map((fixture) => fixture.fixtureHash),
+    fixtures.map((fixture) => fixture.fixtureHash),
+  );
+  fixtures.forEach((fixture) => {
+    const tier = ROUTE_LENGTH_TIERS.find((candidate) => candidate.id === fixture.difficultyTier);
+    assert.ok(tier);
     assert.deepEqual(verifyFixture(fixture), []);
     assert.equal(computeFixtureHash(fixture), fixture.fixtureHash);
-    assert.ok(fixture.optimalPathLength >= 24);
+    assert.equal(fixture.difficultyTier, tier.id);
+    assert.ok(fixture.optimalPathLength >= tier.min);
+    assert.ok(fixture.optimalPathLength <= tier.max);
     assert.ok(!fixture.optimalPath.some((point) => point.r < 0 || point.c < 0));
-  }
+  });
   // Contract hashes are stable and non-trivial.
   assert.equal(SCHEMA_HASH, sha256(RESPONSE_SCHEMA));
   assert.equal(PROMPT_HASH, sha256(WALKER_PROMPT));
@@ -132,7 +142,7 @@ test("v0 fixtures are intact, unique, and BFS-verified", async () => {
 });
 
 test("policy v0.1: a visibly blocked direction is a wall hit, not a termination", async () => {
-  const fixtures = await loadAllFixtures();
+  const fixtures = generateFixtureSuite("blocked-policy-suite", 1);
   const events = [];
   // The mock always picks a direction from blockedDirections: under v0.1 this
   // consumes turns as wall hits instead of terminating the episode.
@@ -225,7 +235,7 @@ test("metrics are reproducible from event logs with correct accounting", () => {
   assert.equal(percentile([1, 2], 0.95), 2);
 });
 
-test("mock dry-run pipeline completes 10 isolated episodes and summaries regenerate", async () => {
+test("mock dry-run pipeline completes 9 isolated episodes and summaries regenerate", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "echo-bench-test-"));
   try {
     const { batchDir, summary, outcomes } = await runBatch({
@@ -233,14 +243,19 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
       batchId: "test-dry-run",
       outDir: tempDir,
       commit: "test-commit",
+      suiteSeed: "test-suite",
+      mazesPerTier: 3,
     });
-    assert.equal(outcomes.length, 10);
+    assert.equal(outcomes.length, 9);
     for (const outcome of outcomes) {
       assert.ok(["solved", "unsolved_max_turns"].includes(outcome.status), outcome.status);
     }
     assert.equal(summary.mode, "dry-run");
     assert.equal(summary.liveApiCall, false);
-    assert.equal(summary.episodes.length, 10);
+    assert.equal(summary.episodes.length, 9);
+    assert.equal(summary.difficultyTiers.easy.totalEpisodes, 3);
+    assert.equal(summary.difficultyTiers.medium.totalEpisodes, 3);
+    assert.equal(summary.difficultyTiers.hard.totalEpisodes, 3);
     assert.ok(summary.disclaimer.includes("NOT a live"));
 
     // Manifest records the full contract.
@@ -255,7 +270,9 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
     assert.match(manifest.sourceHash, /^[0-9a-f]{64}$/);
     assert.match(manifest.diffHash, /^[0-9a-f]{64}$/);
     assert.equal(manifest.maxTurns, MAX_TURNS);
-    assert.ok(manifest.fixtureOrder.length === 10);
+    assert.equal(manifest.suiteSeed, "test-suite");
+    assert.equal(manifest.mazesPerTier, 3);
+    assert.ok(manifest.fixtureOrder.length === 9);
     assert.ok(manifest.promptHash && manifest.schemaHash && manifest.rulesHash && manifest.fixtureSetHash);
 
     // Summaries must be regenerable from raw artifacts alone.
@@ -275,7 +292,7 @@ test("mock dry-run pipeline completes 10 isolated episodes and summaries regener
     assert.deepEqual(modelRegenerated.modelsReturned, ["mock-explorer"]);
 
     // Episode isolation: each transcript belongs to exactly one fixture.
-    for (const fixtureId of FIXTURE_IDS) {
+    for (const fixtureId of manifest.fixtureOrder) {
       const transcript = await readFile(path.join(batchDir, "episodes", fixtureId, "transcript.jsonl"), "utf8");
       const events = transcript.split("\n").filter(Boolean).map((line) => JSON.parse(line));
       const startIds = new Set(events.filter((event) => event.type === "episode_start").map((event) => event.fixtureId));
@@ -449,6 +466,8 @@ test("resume refuses incompatible manifests and preserves the original metadata"
       batchId: "resume-test",
       outDir: tempDir,
       commit: "source-a",
+      suiteSeed: "resume-suite",
+      mazesPerTier: 1,
     });
     const manifestPath = path.join(tempDir, "manifest.json");
     const before = await readFile(manifestPath, "utf8");
@@ -472,7 +491,7 @@ test("resume refuses incompatible manifests and preserves the original metadata"
       model: "gpt-5.6-luna",
       commit: "source-a",
     });
-    assert.equal(resumed.outcomes.filter((outcome) => outcome.skipped).length, 10);
+    assert.equal(resumed.outcomes.filter((outcome) => outcome.skipped).length, 3);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -531,7 +550,7 @@ test("retry delay does not subtract request latency from Retry-After", async () 
 });
 
 test("mock adapter state cannot leak across episodes", async () => {
-  const fixtures = await loadAllFixtures();
+  const fixtures = generateFixtureSuite("isolation-suite", 1);
   const first = await runEpisode({
     fixture: fixtures[0],
     maxTurns: MAX_TURNS,
