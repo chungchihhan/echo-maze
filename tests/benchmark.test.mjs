@@ -124,6 +124,7 @@ test("v0 fixtures are intact, unique, and BFS-verified", async () => {
     "stealth/ox-alpha",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "deepseek/deepseek-v4-flash-0731",
+    "z-ai/glm-5.3-flash",
   ]);
 });
 
