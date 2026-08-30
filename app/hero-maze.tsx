@@ -199,8 +199,8 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       const size = mazes[0].cells.length;
       const scene = new three.Scene();
       const camera = new three.PerspectiveCamera(42, 1, 0.1, 100);
-      // Favor a closer, more immersive frame; edge cropping during auto-orbit is intentional.
-      camera.position.set(0, 22, 1.65);
+      // Start at a 45-degree elevation so the maze reads as a space, not a flat plan.
+      camera.position.set(11, 15.5, 11);
 
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setClearColor(0x0033e5, 0);
@@ -253,12 +253,12 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         glyphTextures.set(value, texture);
         return texture;
       };
-      const floorMaterial = new three.MeshBasicMaterial({ color: 0x9fbdff, transparent: true, opacity: 0.34, side: three.DoubleSide, depthWrite: true });
+      const floorMaterial = new three.MeshBasicMaterial({ color: 0x102a72, side: three.DoubleSide, depthWrite: true });
       const floorGeometries: Array<InstanceType<typeof three.ShapeGeometry>> = [];
       const lineGeometries: Array<InstanceType<typeof three.BufferGeometry>> = [];
       const particleGeometries: Array<InstanceType<typeof three.BufferGeometry>> = [];
       const exitGeometry = new three.CylinderGeometry(EXIT_RADIUS, EXIT_RADIUS * 0.92, 0.08, 40);
-      const exitMaterial = new three.MeshBasicMaterial({ color: 0x1749bd });
+      const exitMaterial = new three.MeshBasicMaterial({ color: 0xf0f7ff });
 
       const buildMazeScene = (maze: Maze, mazeIndex: number) => {
         const group = new three.Group();
@@ -268,7 +268,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         const start = cellCenter(maze, maze.start);
         const exit = cellCenter(maze, maze.exit);
 
-        const floorExtent = size / 2 + 0.15;
+        const floorExtent = size / 2;
         const floorShape = new three.Shape();
         floorShape.moveTo(-floorExtent, -floorExtent);
         floorShape.lineTo(floorExtent, -floorExtent);
@@ -407,7 +407,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
 
       const walkerGeometry = new three.SphereGeometry(0.28, 32, 24);
       const walkerMaterial = new three.MeshStandardMaterial({
-        color: 0xf0f7ff,
+        color: 0xff5c35,
         emissive: 0x527ceb,
         emissiveIntensity: 0.3,
         metalness: 0.08,
@@ -575,9 +575,9 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
   }, [mazes]);
 
   return (
-    <div ref={stageRef} className="hero-maze-stage" aria-label="Interactive 3D maze. The camera auto-orbits while idle; drag to steer from the default top-down view.">
+    <div ref={stageRef} className="hero-maze-stage" aria-label="Interactive 3D maze. The camera auto-orbits while idle; drag to steer from the default angled view.">
       {createFallback(fallbackMaze)}
-      <span className="sr-only">Interactive three-dimensional maze. The camera slowly orbits while idle; drag to steer it. The initial camera is a top-down view.</span>
+      <span className="sr-only">Interactive three-dimensional maze. The camera slowly orbits while idle; drag to steer it. The initial camera uses a 45-degree angled view.</span>
     </div>
   );
 }

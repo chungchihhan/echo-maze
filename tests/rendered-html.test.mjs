@@ -33,12 +33,16 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(html, /<title>Echo Maze — One Agent, Hidden Maze<\/title>/i);
   assert.match(html, /echo-maze-icon\.png/);
   assert.match(text, /ECHO MAZE/);
-  assert.match(text, /WALKER VIEW/);
-  assert.match(text, /The Local Explorer/);
+  assert.match(text, /RECORDED WALKER RUN/);
+  assert.match(text, /One turn at a time/);
   assert.match(text, /ECHO-BENCH-V0-02/);
-  assert.match(text, /WALKER OUTPUT/);
-  assert.match(text, /STEPS TAKEN/);
-  assert.match(text, /COORDINATE STATUS/);
+  assert.match(text, /AGENT OUTPUT/);
+  assert.match(text, /TURN/);
+  assert.match(text, /LAST ACTION/);
+  assert.match(text, /MODEL ESTIMATE/);
+  assert.match(text, /STEPS/);
+  assert.match(text, /ACTION/);
+  assert.doesNotMatch(text, /WALKER OUTPUT|ENVIRONMENT RESULT|COORDINATE STATUS/);
   assert.doesNotMatch(text, /OUTCOME/);
   assert.match(text, /THE BENCHMARK/);
   assert.match(text, /A memory test with no map/);
@@ -46,11 +50,10 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(html, /app-navigation/);
   assert.match(html, /aria-label="Open navigation"/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
-  assert.match(html, /turn-output-thread/);
-  assert.match(html, /text-loop-value/);
-  assert.match(text, /Waiting for the first recorded turn/);
+  assert.match(html, /landing-agent-output/);
+  assert.match(html, /landing-model-action/);
   assert.match(html, /href="\/replay"/);
-  assert.doesNotMatch(text, /REPLAY LIBRARY|AGENT OUTPUT|Review any recorded run/);
+  assert.doesNotMatch(text, /REPLAY LIBRARY|Review any recorded run/);
   assert.doesNotMatch(html, /class="footer-note"/);
   assert.doesNotMatch(text, /minimum optimal route/);
   assert.doesNotMatch(text, /\bLab\b|LIVE LAB/);
@@ -109,6 +112,8 @@ test("published benchmark index is valid and its runs are replayable", async () 
   assert.ok(Array.isArray(index.runs));
   assert.ok(index.runs.every((run) => run.max_turn > 0));
   assert.ok(index.runs.every((run) => run.playback_duration_ms > 0));
+  assert.ok(index.runs.every((run) => typeof run.featured === "boolean"));
+  assert.deepEqual(index.runs.map((run) => run.homepage_order), index.runs.map((_run, index) => index + 1));
 
   const runId = index.runs[0]?.id;
   if (!runId) return;

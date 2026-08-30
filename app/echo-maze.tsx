@@ -17,7 +17,7 @@ import {
 import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
 import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } from "./demo-replay";
 import { HeroMaze } from "./hero-maze";
-import { WalkerMarker } from "./walker-marker";
+import { GridWalkerMarker } from "./walker-marker";
 
 // Environment semantics (maze generation, movement, corridor line-of-sight)
 // live in ../lib/maze and are shared verbatim with the headless benchmark
@@ -92,6 +92,9 @@ type ReplayRunSummary = {
   event_count: number;
   max_turn: number | null;
   had_error: number;
+  spl?: number;
+  featured?: boolean;
+  homepage_order?: number;
   is_demo?: boolean;
 };
 type ReplayDetail = DemoReplayDetail;
@@ -110,6 +113,8 @@ const HERO_MAZES = [
   generateMaze(seededRandom("ECHO-MAZE-HERO-04"), "HERO04"),
   generateMaze(seededRandom("ECHO-MAZE-HERO-05"), "HERO05"),
 ];
+const LANDING_STAGE_HOLD_MS = [1000, 1200, 0, 1800, 900] as const;
+const LANDING_STREAM_CHARACTER_MS = 22;
 
 function relativePositionAtObservation(history: WalkerTurn[], entryIndex: number): RelativePoint {
   const position = { x: 0, y: 0 };
@@ -174,19 +179,25 @@ function buildReplayFrames(detail: ReplayDetail): ReplayFrame[] {
     }
 
     if (event.type === "solo_walker_response") {
-      if (typeof payload.direction !== "string" || !DIRECTIONS.some((item) => item.key === payload.direction)) continue;
-      const believed = replayPayload(payload.believedPosition);
+      const direction = typeof payload.direction === "string" ? payload.direction : payload.action;
+      if (typeof direction !== "string" || !DIRECTIONS.some((item) => item.key === direction)) continue;
+      const believed = replayPayload(payload.believedPosition ?? payload.estimatedPosition);
+      const reasoning = typeof payload.reasoning === "string"
+        ? payload.reasoning
+        : typeof payload.notes === "string"
+          ? payload.notes
+          : "Navigation notes unavailable.";
       const entry: WalkerTurn = {
         turn: typeof payload.turn === "number" ? payload.turn : state.turn + 1,
         observation: pendingObservation,
         observationSummary: typeof payload.observationSummary === "string" ? payload.observationSummary : "Observation unavailable.",
-        reasoning: typeof payload.reasoning === "string" ? payload.reasoning : "Reasoning unavailable.",
+        reasoning,
         believedPosition: {
           x: typeof believed.x === "number" ? believed.x : 0,
           y: typeof believed.y === "number" ? believed.y : 0,
         },
-        coordinateNote: typeof payload.coordinateNote === "string" ? payload.coordinateNote : "Coordinate note unavailable.",
-        direction: payload.direction as DirectionKey,
+        coordinateNote: typeof payload.coordinateNote === "string" ? payload.coordinateNote : reasoning,
+        direction: direction as DirectionKey,
         result: null,
       };
       state = {
@@ -241,10 +252,27 @@ function buildReplayFrames(detail: ReplayDetail): ReplayFrame[] {
 }
 
 const DEMO_REPLAY_FRAMES = buildReplayFrames(DEMO_REPLAY_DETAIL);
-const DEMO_REPLAY_TURNS = DEMO_REPLAY_FRAMES
-  .map((frame) => frame.game.history.at(-1))
-  .filter((thought): thought is WalkerTurn => Boolean(thought))
-  .filter((thought, index, thoughts) => index === 0 || thought.turn !== thoughts[index - 1].turn);
+const DEMO_REPLAY_TURNS = [...DEMO_REPLAY_FRAMES.reduce((turns, frame) => {
+  const thought = frame.game.history.at(-1);
+  if (thought) turns.set(thought.turn, thought);
+  return turns;
+}, new Map<number, WalkerTurn>()).values()];
+
+type LandingReplayTurn = { decisionGame: GameState; resultGame: GameState; thought: WalkerTurn };
+
+function buildLandingReplayTurns(frames: ReplayFrame[]): LandingReplayTurn[] {
+  return frames.flatMap((frame, frameIndex) => {
+    const thought = frame.game.history.at(-1);
+    if (frame.game.phase !== "walker_move" || !thought) return [];
+    const resultFrame = frames.slice(frameIndex + 1).find((candidate) => {
+      const resultThought = candidate.game.history.at(-1);
+      return resultThought?.turn === thought.turn && resultThought.result !== null;
+    });
+    return [{ decisionGame: frame.game, resultGame: resultFrame?.game ?? frame.game, thought }];
+  });
+}
+
+const DEMO_LANDING_REPLAY_TURNS = buildLandingReplayTurns(DEMO_REPLAY_FRAMES);
 
 const DEMO_REPLAY_SUMMARY: ReplayRunSummary = {
   id: DEMO_REPLAY_DETAIL.run.id,
@@ -449,15 +477,14 @@ function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
         {game.maze.cells.flat().map((cell) => {
           const point = { r: cell.r, c: cell.c };
           if (!visible.has(pointKey(point))) return <div className="local-cell local-hidden" key={pointKey(point)} aria-label="Area hidden by walls" />;
-          const isCenter = samePoint(point, game.position);
           const isExit = samePoint(point, game.maze.exit);
           return (
-            <div className={`local-cell ${isCenter ? "local-center" : ""} ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isCenter ? <WalkerMarker /> : null}
+            <div className={`local-cell ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
               {isExit ? <span className="local-exit-mark">EXIT</span> : null}
             </div>
           );
         })}
+        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
       </div>
     </div>
   );
@@ -469,15 +496,16 @@ function SpectatorMap({ game, hidden }: { game: GameState; hidden: boolean }) {
       <div className="maze-grid full-maze" aria-label="Complete maze spectator view">
         {game.maze.cells.flat().map((cell) => {
           const point = { r: cell.r, c: cell.c };
-          const isWalker = samePoint(point, game.position);
+          const isStart = samePoint(point, game.maze.start);
           const isExit = samePoint(point, game.maze.exit);
           return (
-            <div className={`maze-cell ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
+            <div className={`maze-cell ${isStart ? "cell-start" : ""} ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
+              {isStart ? <span className="start-mark">START</span> : null}
               {isExit ? <span className="exit-mark">EXIT</span> : null}
-              {isWalker ? <WalkerMarker /> : null}
             </div>
           );
         })}
+        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
       </div>
     </div>
   );
@@ -594,7 +622,7 @@ function TextLoopValue({ value }: { value: string }) {
   );
 }
 
-function TurnOutputThread({ thoughts, activeTurn }: { thoughts: WalkerTurn[]; activeTurn: number | null }) {
+function TurnOutputThread({ thoughts, activeTurn, activeResult }: { thoughts: WalkerTurn[]; activeTurn: number | null; activeResult: MoveResult | null }) {
   return (
     <aside className="turn-output-thread" aria-live="polite">
       {!activeTurn ? (
@@ -617,10 +645,17 @@ function TurnOutputThread({ thoughts, activeTurn }: { thoughts: WalkerTurn[]; ac
                 : "is-hidden";
         const directionLabel = DIRECTIONS.find((item) => item.key === thought.direction)?.label;
         const threadLabel = `TURN ${String(thought.turn).padStart(2, "0")} · MOVE ${directionLabel?.toUpperCase() ?? "—"}`;
+        const result = distance === 0 ? activeResult : thought.result;
         return (
           <article className={`turn-thread-card ${state}`} key={thought.turn} data-thread-label={threadLabel} aria-hidden={state !== "is-active"}>
             <span className="turn-output-label">WALKER OUTPUT</span>
             <p>{thought.reasoning}</p>
+            <div className="turn-output-result">
+              <span>ENVIRONMENT RESULT</span>
+              <strong className={result === "blocked" ? "is-blocked" : result === null ? "is-pending" : ""}>
+                {result === "blocked" ? "Blocked — stayed in place" : result === "moved" ? "Move succeeded" : "Awaiting move"}
+              </strong>
+            </div>
             <span className="turn-output-meta">{threadLabel}</span>
           </article>
         );
@@ -654,18 +689,117 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
           <MazeViewport game={game} showFullMap={showFullMap} showCaption={showMapCaption} />
           <div className="action-readout">
             <div><span className="readout-label">LAST ACTION</span><strong><TextLoopValue value={game.lastAction ? `Move ${DIRECTIONS.find((item) => item.key === game.lastAction)?.label}` : "—"} /></strong></div>
-            <div><span className="readout-label">COORDINATE</span><strong className={!lastThought || coordinateIsConsistent ? "match" : "drift"}><TextLoopValue value={lastThought ? `(${reportedPosition.x}, ${reportedPosition.y})` : "(0, 0)"} /></strong></div>
+            <div><span className="readout-label">MODEL ESTIMATE</span><strong className={!lastThought || coordinateIsConsistent ? "match" : "drift"}><TextLoopValue value={lastThought ? `(${reportedPosition.x}, ${reportedPosition.y})` : "(0, 0)"} /></strong></div>
             <div><span className="readout-label">STEPS TAKEN</span><strong><TextLoopValue value={String(game.turn).padStart(2, "0")} /></strong></div>
           </div>
           <div className="coordinate-readout">
             <span className="readout-label">COORDINATE STATUS</span>
             <strong className={!lastThought || coordinateIsConsistent ? "match" : "drift"}>{lastThought ? (coordinateIsConsistent ? "Consistent" : "Drift detected") : "Origin"}</strong>
-            <em>{lastThought ? "relative position check" : "awaiting first turn"}</em>
+            <em>{lastThought ? (lastThought.result === null ? "estimate before action" : "awaiting next estimate") : "awaiting first turn"}</em>
           </div>
         </div>
-        {showTurnOutput ? <TurnOutputThread thoughts={DEMO_REPLAY_TURNS} activeTurn={lastThought?.turn ?? null} /> : null}
+        {showTurnOutput ? <TurnOutputThread thoughts={DEMO_REPLAY_TURNS} activeTurn={lastThought?.turn ?? null} activeResult={lastThought?.result ?? null} /> : null}
       </div>
     </article>
+  );
+}
+
+function StreamingAgentOutput({ text, stage }: { text: string; stage: number }) {
+  const [visibleCharacters, setVisibleCharacters] = useState(0);
+
+  useEffect(() => {
+    if (stage < 2) {
+      setVisibleCharacters(0);
+      return;
+    }
+    if (stage > 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setVisibleCharacters(text.length);
+      return;
+    }
+
+    const startedAt = performance.now();
+    const timer = window.setInterval(() => {
+      const elapsed = performance.now() - startedAt;
+      setVisibleCharacters(Math.min(text.length, Math.floor(elapsed / LANDING_STREAM_CHARACTER_MS)));
+    }, 30);
+    return () => window.clearInterval(timer);
+  }, [stage, text]);
+
+  return (
+    <p className="landing-streaming-copy" aria-label={text}>
+      <span aria-hidden="true">{text.slice(0, visibleCharacters)}</span>
+      {stage === 2 && visibleCharacters < text.length ? <i className="streaming-caret" aria-hidden="true" /> : null}
+    </p>
+  );
+}
+
+function landingStageClass(stage: number, section: number) {
+  if (stage === section) return "is-active";
+  if (stage > section) return "is-complete";
+  return "is-pending";
+}
+
+function LandingReplayStage({
+  decisionGame,
+  mapGame,
+  thought,
+  stage,
+  showFullMap,
+  onToggleFullMap,
+}: {
+  decisionGame: GameState;
+  mapGame: GameState;
+  thought: WalkerTurn;
+  stage: number;
+  showFullMap: boolean;
+  onToggleFullMap: () => void;
+}) {
+  const reportedPosition = thought.believedPosition ?? { x: 0, y: 0 };
+  const lastActionLabel = decisionGame.lastAction
+    ? DIRECTIONS.find((item) => item.key === decisionGame.lastAction)?.label
+    : null;
+  const actionLabel = DIRECTIONS.find((item) => item.key === thought.direction)?.label ?? "—";
+
+  return (
+    <div className="landing-replay-stage">
+      <header className="landing-replay-head">
+        <div>
+          <PanelLabel>RECORDED WALKER RUN</PanelLabel>
+          <h2>One turn at a time.</h2>
+          <p>Maze {decisionGame.maze.seed} · optimal {decisionGame.maze.routeLength} steps</p>
+        </div>
+        <div className="landing-replay-actions">
+          <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
+            {showFullMap ? "Show Walker view" : "Show full map"}
+          </button>
+        </div>
+      </header>
+
+      <div className="landing-replay-body">
+        <div className="landing-maze-panel">
+          <MazeViewport game={mapGame} showFullMap={showFullMap} showCaption={false} />
+        </div>
+
+        <div className="landing-output-panel">
+          <div className={`landing-output-row landing-turn-row ${landingStageClass(stage, 0)}`}>
+            <div><span>TURN</span><strong>{String(thought.turn).padStart(2, "0")}</strong></div>
+            <div><span>LAST ACTION</span><strong>{lastActionLabel ? `MOVE ${lastActionLabel.toUpperCase()}` : "—"}</strong></div>
+          </div>
+          <div className={`landing-output-row landing-estimate-row ${landingStageClass(stage, 1)}`}>
+            <div><span>MODEL ESTIMATE</span><strong>({reportedPosition.x}, {reportedPosition.y})</strong></div>
+            <div><span>STEPS</span><strong>{String(decisionGame.turn).padStart(2, "0")}</strong></div>
+          </div>
+          <div className={`landing-agent-output ${landingStageClass(stage, 2)}`}>
+            <span>AGENT OUTPUT</span>
+            <StreamingAgentOutput text={thought.reasoning} stage={stage} />
+          </div>
+          <div className={`landing-model-action ${landingStageClass(stage, 3)}`}>
+            <span>ACTION</span>
+            <strong>MOVE {actionLabel.toUpperCase()}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -707,16 +841,95 @@ function BenchmarkIntro() {
 
 export function LandingPage() {
   const [showFullMap, setShowFullMap] = useState(false);
-  const [frameIndex, setFrameIndex] = useState(0);
+  const [landingTurns, setLandingTurns] = useState<LandingReplayTurn[]>(DEMO_LANDING_REPLAY_TURNS);
+  const [publishedRuns, setPublishedRuns] = useState<ReplayRunSummary[]>([]);
+  const [publishedRunIndex, setPublishedRunIndex] = useState(0);
+  const [turnIndex, setTurnIndex] = useState(0);
+  const [stage, setStage] = useState(0);
+  const publishedReplayCache = useRef(new Map<string, LandingReplayTurn[]>());
+  const replayTurn = landingTurns[turnIndex] ?? landingTurns[0] ?? DEMO_LANDING_REPLAY_TURNS[0];
+  const mapGame = stage >= 3 ? replayTurn.resultGame : replayTurn.decisionGame;
+  const publishedRun = publishedRuns[publishedRunIndex];
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setFrameIndex((index) => (index + 1) % DEMO_REPLAY_FRAMES.length);
-    }, 520);
-    return () => window.clearInterval(timer);
+    const controller = new AbortController();
+    const loadPublishedIndex = async () => {
+      try {
+        const indexResponse = await fetch("/replay-data/index.json", { signal: controller.signal });
+        if (!indexResponse.ok) throw new Error("Could not load published replay index.");
+        const data = await indexResponse.json() as { runs?: ReplayRunSummary[] };
+        const playableRuns = (data.runs ?? [])
+          .filter((run) => run.featured !== false && (run.max_turn ?? 0) > 1)
+          .sort((left, right) => (left.homepage_order ?? Number.MAX_SAFE_INTEGER) - (right.homepage_order ?? Number.MAX_SAFE_INTEGER));
+        if (playableRuns.length === 0) throw new Error("No published replay has playable turns.");
+        setPublishedRuns(playableRuns);
+        setPublishedRunIndex(0);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("Echo Maze homepage is using the bundled replay fallback:", error);
+      }
+    };
+
+    void loadPublishedIndex();
+    return () => controller.abort();
   }, []);
 
-  const frame = DEMO_REPLAY_FRAMES[frameIndex] ?? DEMO_REPLAY_FRAMES[0];
+  useEffect(() => {
+    if (!publishedRun) return undefined;
+    const controller = new AbortController();
+
+    const loadRun = async (run: ReplayRunSummary) => {
+      const cached = publishedReplayCache.current.get(run.id);
+      if (cached) return cached;
+      const response = await fetch(`/replay-data/runs/${encodeURIComponent(run.id)}.json`, { signal: controller.signal });
+      if (!response.ok) throw new Error(`Could not load published replay ${run.id}.`);
+      const detail = await response.json() as ReplayDetail;
+      const turns = buildLandingReplayTurns(buildReplayFrames(detail));
+      if (turns.length === 0) throw new Error(`Published replay ${run.id} has no complete turns.`);
+      publishedReplayCache.current.set(run.id, turns);
+      return turns;
+    };
+
+    loadRun(publishedRun)
+      .then((turns) => {
+        if (controller.signal.aborted) return;
+        setLandingTurns(turns);
+        setTurnIndex(0);
+        setStage(0);
+        setShowFullMap(false);
+
+        const nextRun = publishedRuns[(publishedRunIndex + 1) % publishedRuns.length];
+        if (nextRun && nextRun.id !== publishedRun.id) {
+          void loadRun(nextRun).catch((error) => {
+            if (!controller.signal.aborted) console.warn("Could not preload the next homepage replay:", error);
+          });
+        }
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        console.warn("Skipping an unavailable homepage replay:", error);
+        setPublishedRunIndex((index) => (index + 1) % publishedRuns.length);
+      });
+
+    return () => controller.abort();
+  }, [publishedRun, publishedRunIndex, publishedRuns]);
+
+  useEffect(() => {
+    const stageDelay = stage === 2
+      ? Math.min(7500, Math.max(3500, replayTurn.thought.reasoning.length * LANDING_STREAM_CHARACTER_MS + 700))
+      : LANDING_STAGE_HOLD_MS[stage] ?? 1000;
+    const timer = window.setTimeout(() => {
+      if (stage < 4) {
+        setStage((current) => current + 1);
+      } else if (turnIndex >= landingTurns.length - 1 && publishedRuns.length > 1) {
+        setPublishedRunIndex((index) => (index + 1) % publishedRuns.length);
+      } else {
+        setTurnIndex((index) => (index + 1) % landingTurns.length);
+        setStage(0);
+      }
+    }, stageDelay);
+    return () => window.clearTimeout(timer);
+  }, [landingTurns.length, publishedRuns.length, replayTurn.thought.reasoning.length, stage, turnIndex]);
 
   return (
     <main className="echo-app landing-page">
@@ -727,12 +940,13 @@ export function LandingPage() {
 
       <section className="landing-demo" aria-label="Featured Walker replay">
         <div className="landing-demo-card">
-          <WalkerCard
-            game={frame.game}
+          <LandingReplayStage
+            decisionGame={replayTurn.decisionGame}
+            mapGame={mapGame}
+            thought={replayTurn.thought}
+            stage={stage}
             showFullMap={showFullMap}
             onToggleFullMap={() => setShowFullMap((value) => !value)}
-            showTurnOutput
-            showMapCaption={false}
           />
         </div>
       </section>

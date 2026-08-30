@@ -16,7 +16,9 @@
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 1084000
+      "playback_duration_ms": 1084000,
+      "featured": true,
+      "homepage_order": 1
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-002",
@@ -33,7 +35,9 @@
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 6200
+      "playback_duration_ms": 6200,
+      "featured": true,
+      "homepage_order": 2
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-003",
@@ -50,7 +54,9 @@
       "spl": 0.5757575757575758,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 301000
+      "playback_duration_ms": 301000,
+      "featured": true,
+      "homepage_order": 3
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-001",
@@ -67,7 +73,9 @@
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 1084000
+      "playback_duration_ms": 1084000,
+      "featured": true,
+      "homepage_order": 4
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-002",
@@ -84,7 +92,9 @@
       "spl": 0.9230769230769231,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 247000
+      "playback_duration_ms": 247000,
+      "featured": true,
+      "homepage_order": 5
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-003",
@@ -101,7 +111,9 @@
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 1084000
+      "playback_duration_ms": 1084000,
+      "featured": true,
+      "homepage_order": 6
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-001",
@@ -118,7 +130,9 @@
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 915200
+      "playback_duration_ms": 915200,
+      "featured": true,
+      "homepage_order": 7
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-002",
@@ -135,7 +149,9 @@
       "spl": 0.5384615384615384,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 652000
+      "playback_duration_ms": 652000,
+      "featured": true,
+      "homepage_order": 8
     },
     {
       "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-003",
@@ -152,7 +168,9 @@
       "spl": 0,
       "batch_id": "luna-2026-08-29-01",
       "policy_revision": "v0.7",
-      "playback_duration_ms": 1084000
+      "playback_duration_ms": 1084000,
+      "featured": true,
+      "homepage_order": 9
     }
   ]
 }
