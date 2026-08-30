@@ -15,7 +15,8 @@
     "benchmark:verify": "node benchmark/verify.js",
     "benchmark:dry-run": "node benchmark/run-batch.js --dry-run",
     "benchmark:run": "node benchmark/run-batch.js",
-    "benchmark:summary": "node benchmark/summarize.js"
+    "benchmark:summary": "node benchmark/summarize.js",
+    "replay:publish": "node benchmark/publish-replays.js"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

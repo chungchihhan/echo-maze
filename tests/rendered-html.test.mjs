@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render(path = "/") {
+async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request(`http://localhost${path}`, {
+    new Request(`http://localhost${pathname}`, {
       headers: { accept: "text/html" },
     }),
     {
@@ -32,7 +32,7 @@ test("server-renders a landing page with the featured Walker replay", async () =
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(html, /<title>Echo Maze — One Agent, Hidden Maze<\/title>/i);
   assert.match(html, /echo-maze-icon\.png/);
-  assert.match(html, /ECHO MAZE/);
+  assert.match(text, /ECHO MAZE/);
   assert.match(text, /WALKER VIEW/);
   assert.match(text, /The Local Explorer/);
   assert.match(text, /ECHO-BENCH-V0-02/);
@@ -93,11 +93,41 @@ test("does not expose a live Lab route", async () => {
   assert.equal(response.status, 404);
 });
 
+test("server-renders the published Replay Library destination", async () => {
+  const response = await render("/replays");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(html, /<title>Replay Library — Echo Maze<\/title>/i);
+  assert.match(text, /Every run leaves a trail of decisions\./i);
+  assert.match(text, /Choose a recorded run/i);
+});
+
+test("published benchmark index is valid and its runs are replayable", async () => {
+  const index = JSON.parse(await readFile(new URL("../public/replay-data/index.json", import.meta.url), "utf8"));
+  assert.equal(index.version, 1);
+  assert.ok(Array.isArray(index.runs));
+  assert.ok(index.runs.every((run) => run.max_turn > 0));
+  assert.ok(index.runs.every((run) => run.playback_duration_ms > 0));
+
+  const runId = index.runs[0]?.id;
+  if (!runId) return;
+  const detail = JSON.parse(await readFile(new URL(`../public/replay-data/runs/${runId}.json`, import.meta.url), "utf8"));
+  assert.equal(detail.source, "benchmark");
+  assert.equal(detail.run.id, runId);
+  assert.equal(detail.run.maze.cells.length, 9);
+  assert.ok(detail.events.some((event) => event.type === "agent_request"));
+  assert.ok(detail.events.some((event) => event.type === "solo_walker_response"));
+  assert.ok(detail.events.some((event) => event.type === "solo_walker_move"));
+  assert.doesNotMatch(JSON.stringify(detail), /requestId|responseId|input_tokens|conversation/);
+});
+
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
-  const [page, shared, replayPage, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore] = await Promise.all([
+  const [page, shared, replayPage, replayUi, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/echo-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/replay-ui.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/demo-replay.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/demo-replay.json", import.meta.url), "utf8"),
     readFile(new URL("../app/api/agent/route.ts", import.meta.url), "utf8"),
@@ -136,12 +166,21 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(shared, /Export replay/);
   assert.doesNotMatch(shared, /navigatorCandidates|localization_evaluation|route_acquired|relocalization|walker_check/);
 
+  // The published replay UI is observation-only and also uses the shared maze core.
+  assert.match(replayUi, /from "\.\.\/lib\/maze\/index\.js"/);
+  assert.match(replayUi, /visibleWalkerPoints\(/);
+  assert.match(replayUi, /buildReplayFrames/);
+  assert.match(replayUi, /HomeReplayChannel/);
+  assert.match(replayUi, /ReplayLibrary/);
+  assert.match(replayUi, /ReplayDetailViewer/);
+  assert.doesNotMatch(replayUi, /requestAgent|recordReplay|Export replay|Auto-run/);
+
   // The agent route is Solo-Walker-only against the Responses API.
   assert.equal(mazeCore.includes("react"), false);
   assert.equal(mazeCore.includes("cloudflare"), false);
   assert.equal(mazeCore.includes("openai"), false);
   assert.match(route, /const MODEL = "gpt-5\.6-luna"/);
-  assert.match(route, /You are the only agent inside Echo Maze\./);
+  assert.match(route, /You are the Walker inside Echo Maze\./);
   assert.match(route, /role !== "solo_walker"/);
   assert.doesNotMatch(route, /role: "navigator"|role: "walker"|routeBetween|deterministic route tool/);
   assert.match(route, /https:\/\/api\.openai\.com\/v1\/responses/);
@@ -150,7 +189,7 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(route, /maxOutputTokens \* attempt/);
   assert.match(route, /invalid_structured_json/);
 
-  // Persistence and runtime boundaries unchanged.
+  // Persistence, hosting, and runtime boundaries remain compatible.
   assert.match(replayRoute, /CREATE TABLE IF NOT EXISTS replay_runs/);
   assert.match(replayRoute, /CREATE TABLE IF NOT EXISTS replay_events/);
   assert.match(schema, /replayRuns/);
@@ -159,5 +198,6 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(layout, /Echo Maze/);
   assert.match(packageJson, /"benchmark:run"/);
   assert.match(packageJson, /"benchmark:verify"/);
+  assert.match(packageJson, /"replay:publish"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });
