@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   DIRECTIONS,
@@ -113,8 +113,18 @@ const HERO_MAZES = [
   generateMaze(seededRandom("ECHO-MAZE-HERO-04"), "HERO04"),
   generateMaze(seededRandom("ECHO-MAZE-HERO-05"), "HERO05"),
 ];
-const LANDING_STAGE_HOLD_MS = [1000, 1200, 0, 1800, 900] as const;
+const LANDING_STAGE_HOLD_MS = [2200, 1200, 0, 1800, 900] as const;
 const LANDING_STREAM_CHARACTER_MS = 22;
+
+function subscribeToReducedMotion(onChange: () => void) {
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function reducedMotionSnapshot() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function relativePositionAtObservation(history: WalkerTurn[], entryIndex: number): RelativePoint {
   const position = { x: 0, y: 0 };
@@ -684,7 +694,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
       <div className={`walker-card-body ${showTurnOutput ? "has-turn-output" : ""}`}>
         <div className="walker-card-main">
           <div className="map-heading">
-            <span>Maze {game.maze.seed} · optimal {game.maze.routeLength} steps</span>
+            <span>Maze {game.maze.seed} · shortest path {game.maze.routeLength} moves</span>
           </div>
           <MazeViewport game={game} showFullMap={showFullMap} showCaption={showMapCaption} />
           <div className="action-readout">
@@ -706,16 +716,10 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
 
 function StreamingAgentOutput({ text, stage }: { text: string; stage: number }) {
   const [visibleCharacters, setVisibleCharacters] = useState(0);
+  const reduceMotion = useSyncExternalStore(subscribeToReducedMotion, reducedMotionSnapshot, () => false);
 
   useEffect(() => {
-    if (stage < 2) {
-      setVisibleCharacters(0);
-      return;
-    }
-    if (stage > 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setVisibleCharacters(text.length);
-      return;
-    }
+    if (stage !== 2 || reduceMotion) return;
 
     const startedAt = performance.now();
     const timer = window.setInterval(() => {
@@ -723,12 +727,14 @@ function StreamingAgentOutput({ text, stage }: { text: string; stage: number }) 
       setVisibleCharacters(Math.min(text.length, Math.floor(elapsed / LANDING_STREAM_CHARACTER_MS)));
     }, 30);
     return () => window.clearInterval(timer);
-  }, [stage, text]);
+  }, [reduceMotion, stage, text]);
+
+  const renderedCharacters = stage < 2 ? 0 : stage > 2 || reduceMotion ? text.length : visibleCharacters;
 
   return (
     <p className="landing-streaming-copy" aria-label={text}>
-      <span aria-hidden="true">{text.slice(0, visibleCharacters)}</span>
-      {stage === 2 && visibleCharacters < text.length ? <i className="streaming-caret" aria-hidden="true" /> : null}
+      <span aria-hidden="true">{text.slice(0, renderedCharacters)}</span>
+      {stage === 2 && renderedCharacters < text.length ? <i className="streaming-caret" aria-hidden="true" /> : null}
     </p>
   );
 }
@@ -766,7 +772,7 @@ function LandingReplayStage({
         <div>
           <PanelLabel>RECORDED WALKER RUN</PanelLabel>
           <h2>One turn at a time.</h2>
-          <p>Maze {decisionGame.maze.seed} · optimal {decisionGame.maze.routeLength} steps</p>
+          <p>Maze {decisionGame.maze.seed} · shortest path {decisionGame.maze.routeLength} moves</p>
         </div>
         <div className="landing-replay-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
@@ -781,21 +787,28 @@ function LandingReplayStage({
         </div>
 
         <div className="landing-output-panel">
-          <div className={`landing-output-row landing-turn-row ${landingStageClass(stage, 0)}`}>
+          <div className="landing-output-row landing-turn-row landing-context-row">
             <div><span>TURN</span><strong>{String(thought.turn).padStart(2, "0")}</strong></div>
             <div><span>LAST ACTION</span><strong>{lastActionLabel ? `MOVE ${lastActionLabel.toUpperCase()}` : "—"}</strong></div>
           </div>
-          <div className={`landing-output-row landing-estimate-row ${landingStageClass(stage, 1)}`}>
-            <div><span>MODEL ESTIMATE</span><strong>({reportedPosition.x}, {reportedPosition.y})</strong></div>
-            <div><span>STEPS</span><strong>{String(decisionGame.turn).padStart(2, "0")}</strong></div>
+          <div className="landing-output-row landing-metrics-row landing-context-row">
+            <div><span>MOVES</span><strong>{String(Math.max(0, decisionGame.turn - decisionGame.collisions)).padStart(2, "0")}</strong></div>
+            <div><span>WALL HITS</span><strong>{String(decisionGame.collisions).padStart(2, "0")}</strong></div>
+          </div>
+          <div className={`landing-exploring ${stage === 0 ? "is-active" : "is-complete"}`}>
+            <span>Exploring the maze…</span>
+          </div>
+          <div className={`landing-model-estimate ${landingStageClass(stage, 1)}`}>
+            <span>MODEL ESTIMATE</span>
+            <strong>{stage >= 1 ? `(${reportedPosition.x}, ${reportedPosition.y})` : "—"}</strong>
           </div>
           <div className={`landing-agent-output ${landingStageClass(stage, 2)}`}>
             <span>AGENT OUTPUT</span>
-            <StreamingAgentOutput text={thought.reasoning} stage={stage} />
+            <StreamingAgentOutput key={`${decisionGame.maze.seed}-${thought.turn}`} text={thought.reasoning} stage={stage} />
           </div>
           <div className={`landing-model-action ${landingStageClass(stage, 3)}`}>
             <span>ACTION</span>
-            <strong>MOVE {actionLabel.toUpperCase()}</strong>
+            <strong>{stage >= 3 ? `MOVE ${actionLabel.toUpperCase()}` : "—"}</strong>
           </div>
         </div>
       </div>

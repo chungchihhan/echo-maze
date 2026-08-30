@@ -11,7 +11,7 @@
   --color-pitch: #000000;
   --color-signal-orange: #ff5c35;
   --color-maze-floor: #102a72;
-  --color-maze-visible: #6f91ee;
+  --color-maze-visible: rgb(82 124 235 / 42%);
 
   /* Typography */
   --font-grot: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -724,11 +724,19 @@ h1 em {
   max-width: none;
 }
 .landing-maze-panel .map-stage { max-height: none; }
+.landing-maze-panel .map-stage::after {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 2px solid var(--ice);
+  pointer-events: none;
+  content: "";
+}
 .landing-maze-panel .map-legend-slot { display: none; }
 
 .landing-output-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -741,7 +749,11 @@ h1 em {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.landing-metrics-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .landing-output-row > div,
+.landing-exploring,
+.landing-model-estimate,
 .landing-agent-output,
 .landing-model-action {
   color: var(--ice);
@@ -760,6 +772,49 @@ h1 em {
 
 .landing-output-row > div + div { border-left: 1px solid rgb(240 247 255 / 42%); }
 
+.landing-context-row > div {
+  color: rgb(240 247 255 / 72%);
+  background: rgb(82 124 235 / 32%);
+}
+
+.landing-exploring,
+.landing-model-estimate {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 22px;
+  border-bottom: 1px solid rgb(240 247 255 / 42%);
+}
+
+.landing-exploring {
+  min-height: 48px;
+  max-height: 48px;
+  justify-content: center;
+  font-style: italic;
+  overflow: hidden;
+  transition: min-height .45s ease, max-height .45s ease, padding .45s ease, border-color .45s ease;
+}
+
+.landing-exploring.is-active span {
+  animation: landing-exploring-pulse 1.05s ease-in-out infinite;
+}
+
+.landing-exploring.is-complete {
+  min-height: 0;
+  max-height: 0;
+  padding-block: 0;
+  border-bottom-width: 0;
+  border-color: transparent;
+  visibility: hidden;
+}
+
+@keyframes landing-exploring-pulse {
+  0%, 100% { opacity: .35; }
+  50% { opacity: 1; }
+}
+
 .landing-output-panel span {
   font-size: var(--text-body-sm);
   line-height: 1.4;
@@ -773,7 +828,8 @@ h1 em {
 
 .landing-agent-output {
   min-height: 0;
-  padding: clamp(22px, 3vw, 42px);
+  padding-block: clamp(22px, 3vw, 42px);
+  padding-inline: 22px;
   border-bottom: 1px solid rgb(240 247 255 / 42%);
 }
 
@@ -807,6 +863,7 @@ h1 em {
 }
 
 .landing-output-row.is-active > div,
+.landing-model-estimate.is-active,
 .landing-agent-output.is-active,
 .landing-model-action.is-active {
   color: var(--cobalt);
@@ -815,12 +872,14 @@ h1 em {
 }
 
 .landing-output-row.is-active,
+.landing-model-estimate.is-active,
 .landing-agent-output.is-active,
 .landing-model-action.is-active { box-shadow: inset 4px 0 0 var(--signal); }
 
 .landing-model-action strong { color: var(--signal); font-weight: 600; }
 
 .landing-output-row.is-complete > div,
+.landing-model-estimate.is-complete,
 .landing-agent-output.is-complete,
 .landing-model-action.is-complete {
   color: rgb(240 247 255 / 58%);
@@ -828,6 +887,7 @@ h1 em {
 }
 
 .landing-output-row.is-pending > div,
+.landing-model-estimate.is-pending,
 .landing-agent-output.is-pending,
 .landing-model-action.is-pending {
   color: rgb(240 247 255 / 34%);
@@ -836,6 +896,10 @@ h1 em {
 
 .landing-model-action.is-complete strong { color: rgb(255 92 53 / 58%); }
 .landing-model-action.is-pending strong { color: rgb(255 92 53 / 34%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-exploring.is-active span { animation: none; }
+}
 
 .replay-left-column {
   display: flex;
@@ -1272,7 +1336,7 @@ h1 em {
 .legend-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .swatch-exit { background: var(--ice); }
 .swatch-walker { border: 2px solid var(--ice); background: var(--signal); }
-.swatch-visible { background: var(--mist); }
+.swatch-visible { background: var(--maze-visible); }
 .swatch-unknown { width: 3px; height: 3px; background: var(--pitch); }
 
 .map-viewport {
