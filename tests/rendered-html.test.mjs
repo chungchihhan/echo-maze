@@ -164,6 +164,9 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(shared, /type GamePhase = "walker_think" \| "walker_move"/);
   assert.match(shared, /recordReplay/);
   assert.match(shared, /Export replay/);
+  // Reduced-motion CSS removes transitions, but the recorded content must
+  // continue advancing because the landing replay has no playback controls.
+  assert.doesNotMatch(shared, /matchMedia\("\(prefers-reduced-motion: reduce\)"\)\.matches\) return undefined/);
   assert.doesNotMatch(shared, /navigatorCandidates|localization_evaluation|route_acquired|relocalization|walker_check/);
 
   // The published replay UI is observation-only and also uses the shared maze core.
