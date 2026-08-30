@@ -1208,22 +1208,25 @@ h1 em {
 }
 
 .cell-start,
-.cell-exit { background: var(--ice); }
+.cell-exit { background: var(--maze-floor); }
 
-.start-mark {
+.start-mark,
+.exit-mark,
+.local-exit-mark {
   position: absolute;
   z-index: 3;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: min(72%, 46px);
+  aspect-ratio: 1;
+  place-items: center;
   color: var(--cobalt);
-  font-size: 10px;
+  background: var(--ice);
+  border-radius: 50%;
+  font-size: clamp(7px, .72vw, 10px);
   letter-spacing: .06em;
-}
-
-.exit-mark {
-  position: absolute;
-  z-index: 3;
-  color: var(--cobalt);
-  font-size: 10px;
-  letter-spacing: .06em;
+  transform: translate(-50%, -50%);
 }
 
 .walker-token {
@@ -1377,7 +1380,6 @@ h1 em {
 .local-cell.local-out { background: transparent; border-color: transparent; }
 .local-cell.local-hidden { background: var(--maze-floor); }
 .local-cell.local-hidden::after { width: 3px; height: 3px; background: var(--ice); content: ""; }
-.local-exit-mark { position: relative; z-index: 3; color: var(--cobalt); font-size: 10px; }
 
 .thought-card {
   display: flex;
