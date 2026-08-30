@@ -375,7 +375,6 @@ function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThink
     <div className="thought-stream" aria-live="polite" ref={streamRef}>
       {history.length === 0 && !isThinking ? (
         <div className="thought-empty">
-          <div className="marble-cluster" aria-hidden="true"><span className="marble marble-ice">😎</span><span className="marble marble-cobalt">😊</span><span className="marble marble-mist">🤪</span></div>
           <p>No memory yet. Once the first turn begins, Walker must navigate using only the conversation accumulated in this run.</p>
         </div>
       ) : null}
@@ -654,9 +653,7 @@ function App() {
       </header>
 
       <section className="intro-row solo-intro">
-        <div className="intro-panel intro-panel-light"><p className="eyebrow">CONVERSATION-ONLY MEMORY</p><h1>Can one agent remember<br /><em>the maze it cannot see?</em></h1>
-          <div className="marble-row" aria-hidden="true"><span className="marble marble-cobalt">😊</span><span className="marble marble-mist">😎</span><span className="marble marble-ice">🤪</span><span className="marble marble-cobalt">🙂</span></div>
-        </div>
+        <div className="intro-panel intro-panel-light"><p className="eyebrow">CONVERSATION-ONLY MEMORY</p><h1>Can one agent remember<br /><em>the maze it cannot see?</em></h1></div>
         <div className="intro-panel intro-panel-blue"><div className="intro-note"><p>No map. No route tool. No notebook.<br />Only observations, decisions, and outcomes from this run.</p></div></div>
       </section>
 
@@ -722,13 +719,12 @@ function App() {
           <div><PanelLabel>REPLAY LIBRARY</PanelLabel><h2>Review any recorded run</h2></div>
           <div className="replay-head-actions">
             <span className={`replay-state replay-${replayStatus}`}>{isReplayMode ? `Replay · ${selectedReplay?.status ?? "recorded"}` : `Replay ${replayStatus}`}</span>
-            <span>{replayRuns.length} saved runs</span>
             <button className="button replay-refresh" type="button" onClick={() => void refreshReplayRuns()}>Refresh</button>
           </div>
         </div>
         <div className="replay-controls">
           <label className="replay-field replay-run-field">
-            <span>RUN</span>
+            <span>Run · {replayRuns.length} saved</span>
             <select value={selectedReplayId} onChange={(event) => void loadReplay(event.target.value)} disabled={isReplayLoading}>
               <option value="">Live game</option>
               {replayRuns.map((run) => (
