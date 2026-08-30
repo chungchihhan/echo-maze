@@ -19,7 +19,7 @@ This module is the server boundary for model calls and durable replay storage. I
 ## Architecture and boundaries
 
 - `POST /api/agent` reads `OPENAI_API_KEY` from the Cloudflare Worker environment and calls the Responses API with `gpt-5.6-luna`. The only supported flow is `role: "solo_walker"`; do not add other agent roles without an explicit product decision.
-- The agent route enforces structured output and rejects directions that are not in the supplied open directions. Its current request policy is a 90-second timeout and up to two attempts, with retryability encoded in the error response.
+- The agent route enforces structured output but does not repair or reject a blocked action; the environment records it as a wall hit. Its current request policy is a 90-second timeout and up to two attempts, with retryability encoded in the error response.
 - `POST /api/replays` stores the run header and ordered event stream in D1. `GET /api/replays` serves both the run library and full/compact replay payloads consumed by the browser.
 - Keep `cloudflare:workers`, secrets, and D1 access inside server routes. Do not import route handlers, environment bindings, or database clients into `app/page.tsx`.
 - If replay schema or event payloads change, update the Drizzle schema, migration strategy, table-creation SQL, and replay playback/export compatibility together.

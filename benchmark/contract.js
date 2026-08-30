@@ -2,41 +2,28 @@
  * Echo Maze Benchmark v0 contract.
  *
  * Everything that must stay fixed across runs and models is defined here:
- * benchmark version, fixture order, model allowlist, observation semantics,
+ * benchmark version, route-length tiers, model allowlist, observation semantics,
  * coordinate system, turn/timeout/retry policy, output schema, and the exact
  * prompt. Hashes over the prompt, schema, and rules are computed from these
  * definitions so any drift changes the recorded hash.
  */
 
 import { createHash } from "node:crypto";
-import { MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
+import { MAX_ROUTE_LENGTH, MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
 
 export const BENCHMARK_VERSION = "v0";
-export const POLICY_REVISION = "v0.5";
-export const GENERATOR_VERSION = "maze-gen-1";
+export const POLICY_REVISION = "v0.7";
+export const GENERATOR_VERSION = "maze-gen-2";
 export const OBSERVATION_VERSION = "corridor-sightline-v1";
 
-/**
- * Seeds are provenance only. The runtime loads immutable fixture snapshots;
- * it never re-rolls a maze from a seed. Fixture files live in ./fixtures and
- * are named after this order.
- */
-export const FIXTURE_SEEDS = [
-  "ECHO-BENCH-V0-01",
-  "ECHO-BENCH-V0-02",
-  "ECHO-BENCH-V0-03",
-  "ECHO-BENCH-V0-04",
-  "ECHO-BENCH-V0-05",
-  "ECHO-BENCH-V0-06",
-  "ECHO-BENCH-V0-07",
-  "ECHO-BENCH-V0-08",
-  "ECHO-BENCH-V0-09",
-  "ECHO-BENCH-V0-10",
+/** Route-length tiers used by every generated benchmark suite. */
+export const ROUTE_LENGTH_TIERS = [
+  { id: "easy", label: "Easy", min: 16, max: 23 },
+  { id: "medium", label: "Medium", min: 24, max: 31 },
+  { id: "hard", label: "Hard", min: 32, max: 39 },
 ];
-
-export const FIXTURE_IDS = FIXTURE_SEEDS.map(
-  (seed, index) => `echo-maze-bench-${BENCHMARK_VERSION}-${String(index + 1).padStart(2, "0")}`,
-);
+export const DEFAULT_MAZES_PER_TIER = 3;
+export const MAX_MAZES_PER_TIER = 100;
 
 /** Models permitted in benchmark runs (exact provider model IDs). */
 export const MODEL_ALLOWLIST = [
@@ -95,20 +82,16 @@ export const HIDDEN_STATE_POLICY =
   "spectator state may enter the prompt.";
 
 export const WALKER_PROMPT = [
-  "You are the only agent inside Echo Maze.",
-  "You cannot see a map, your absolute coordinates, or any hidden state. You have no route tool and no notebook.",
-  "Your sole memory is the complete conversation from this run: prior observations, your prior reasoning summaries and decisions, and movement outcomes.",
-  "Maintain your own relative coordinate system in that conversation. The starting cell is (0,0); moving right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1.",
-  "A successful prior move changes your coordinate by exactly one. A blocked prior move leaves it unchanged. Recalculate your current believed coordinate from the history every turn.",
-  "Write one coordinate note for the current cell that records useful open directions, explored branches, dead ends, or a possible revisit. This note becomes part of the next turn's conversation.",
-  "The current observation shows open and blocked absolute directions plus straight line-of-sight corridors. A wall hides everything beyond it.",
-  "Use the conversation to build and revise a mental route: remember branches already attempted, recognize likely revisits from matching views and action history, and backtrack from dead ends.",
-  "Never claim certainty about a location or unseen geometry. Never invent coordinates.",
-  "If the exit is visible, choose the open direction whose sightline contains isExit=true.",
-  "Otherwise prefer an open branch you believe has not been explored; when necessary, deliberately backtrack.",
-  "Return a concise English observation summary and a concise, useful English reasoning summary that makes your memory strategy observable.",
-  "Write the coordinate note in English as well.",
-  "Choose exactly one direction from the currently open directions.",
+  "You are the Walker inside Echo Maze.",
+  "Your goal is to reach the exit.",
+  "You cannot see the complete maze, your absolute position, or any hidden state. You have no route-finding tool.",
+  "Each turn, you receive your current local observation, open and blocked absolute directions, straight line-of-sight information, the result of your previous action, and the complete conversation from the current run.",
+  "The starting cell is defined as relative position (0,0). A successful move right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1. A blocked move does not change your position.",
+  "Return exactly three fields.",
+  "estimated_position: Your current estimate of your relative position. This is your own estimate and may be wrong.",
+  "notes: Notes that will be included in later turns of this run. You may use this field in any way you find useful. Choose your own format and decide what is worth recording.",
+  "action: Choose exactly one of up, right, down, or left.",
+  "Explore the maze using your own strategy and reach the exit. Base your decisions only on the provided observations and conversation.",
 ].join(" ");
 
 export const RESPONSE_SCHEMA_NAME = "solo_walker_decision";
@@ -117,9 +100,7 @@ export const RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    observation_summary: { type: "string", minLength: 1, maxLength: 220 },
-    reasoning_summary: { type: "string", minLength: 1, maxLength: 360 },
-    believed_position: {
+    estimated_position: {
       type: "object",
       additionalProperties: false,
       properties: {
@@ -128,10 +109,10 @@ export const RESPONSE_SCHEMA = {
       },
       required: ["x", "y"],
     },
-    coordinate_note: { type: "string", minLength: 1, maxLength: 280 },
-    direction: { type: "string", enum: ["up", "right", "down", "left"] },
+    notes: { type: "string", minLength: 1, maxLength: 280 },
+    action: { type: "string", enum: ["up", "right", "down", "left"] },
   },
-  required: ["observation_summary", "reasoning_summary", "believed_position", "coordinate_note", "direction"],
+  required: ["estimated_position", "notes", "action"],
 };
 
 /**
@@ -165,6 +146,10 @@ export const RULES = {
   observationVersion: OBSERVATION_VERSION,
   mazeSize: 9,
   minRouteLength: MIN_ROUTE_LENGTH,
+  maxRouteLength: MAX_ROUTE_LENGTH,
+  routeLengthTiers: ROUTE_LENGTH_TIERS,
+  defaultMazesPerTier: DEFAULT_MAZES_PER_TIER,
+  maxMazesPerTier: MAX_MAZES_PER_TIER,
   coordinateSystem: COORDINATE_SYSTEM,
   hiddenStatePolicy: HIDDEN_STATE_POLICY,
   maxTurns: MAX_TURNS,
@@ -202,6 +187,9 @@ export const RULES = {
     "Policy v0.4: well-formed decisions under unambiguous field aliases (e.g. reasoning -> reasoning_summary, " +
     "believedPosition -> believed_position) are re-keyed to the canonical schema before validation. Canonical " +
     "fields always win; values are never invented; decisions missing required content still fail.",
+  outputFieldPolicy:
+    "Policy v0.6: the environment observation is not repeated by the model. Each decision contains only a " +
+    "self-reported estimated position, free-form notes for later turns, and an action.",
   transportResiliencePolicy:
     "Policy v0.5: live requests have a five-second pacing floor, increase pacing to target at most 80% of " +
     "a provider-reported token/minute limit, and episodes have a cooldown. HTTP 429 retries honor " +
@@ -223,7 +211,9 @@ export function contractDescriptor() {
     policyRevision: POLICY_REVISION,
     generatorVersion: GENERATOR_VERSION,
     observationVersion: OBSERVATION_VERSION,
-    fixtureOrder: FIXTURE_IDS,
+    routeLengthTiers: ROUTE_LENGTH_TIERS,
+    defaultMazesPerTier: DEFAULT_MAZES_PER_TIER,
+    maxMazesPerTier: MAX_MAZES_PER_TIER,
     modelAllowlist: MODEL_ALLOWLIST,
     defaultModel: DEFAULT_MODEL,
     maxTurns: MAX_TURNS,
