@@ -703,7 +703,6 @@ export function LandingPage() {
   const [frameIndex, setFrameIndex] = useState(0);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
     const timer = window.setInterval(() => {
       setFrameIndex((index) => (index + 1) % DEMO_REPLAY_FRAMES.length);
     }, 520);
