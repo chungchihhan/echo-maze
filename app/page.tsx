@@ -660,7 +660,11 @@ function App() {
 
       <section className="control-bar">
         <div className="control-info">
-          <div className="run-status"><StatusDot status={statusTone} /><span>{statusLabel}</span><span className="run-separator">/</span><span>maze {displayGame.maze.seed}</span><span className="run-separator">/</span><span>optimal {displayGame.maze.routeLength} steps</span><span className="run-separator">/</span><span className={`replay-state replay-${replayStatus}`}>{isReplayMode ? `frame ${playbackIndex + 1}/${playbackFrames.length}` : `replay ${replayStatus}`}</span></div>
+          <div className="run-status">
+            <StatusDot status={statusTone} />
+            <span>{statusLabel}</span>
+            {isReplayMode ? <><span className="run-separator">/</span><span>frame {playbackIndex + 1}/{playbackFrames.length}</span></> : null}
+          </div>
           <div className="phase-track" aria-label="Turn phases"><span className={displayGame.phase === "walker_think" ? "is-active" : ""}>1 · Observe & reason</span><i>→</i><span className={displayGame.phase === "walker_move" ? "is-active" : ""}>2 · Move & remember outcome</span></div>
         </div>
         <div className="control-actions">
@@ -676,8 +680,7 @@ function App() {
       <section className="agent-grid solo-grid">
         <article className="agent-card thought-card">
           <div className="card-head">
-            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>AGENT OUTPUT</PanelLabel><h2>Walker&apos;s reasoning log</h2></div></div>
-            <span className="visibility-tag">FULL RUN HISTORY</span>
+            <div className="agent-name-wrap"><PanelLabel>AGENT OUTPUT</PanelLabel><h2>Walker&apos;s reasoning log</h2></div>
           </div>
           <div className="thought-disclaimer">A concise explanation Walker provides each turn—not the model&apos;s hidden chain of thought.</div>
           <ThoughtStream history={displayGame.history} isThinking={!isReplayMode && isThinking} />
@@ -685,7 +688,7 @@ function App() {
 
         <article className="agent-card walker-card">
           <div className="card-head">
-            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div></div>
+            <div className="agent-name-wrap"><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div>
             <div className="card-head-actions">
               <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>
                 {showFullMap ? "Show Walker view" : "Show full map"}
@@ -694,8 +697,7 @@ function App() {
             </div>
           </div>
           <div className="map-heading">
-            <span>{showFullMap ? "Full maze for the observer" : "What the agent can see now"}</span>
-            <span>{showFullMap ? "Hidden from Walker" : "Walls hide everything beyond them"}</span>
+            <span>Maze {displayGame.maze.seed} · optimal {displayGame.maze.routeLength} steps</span>
           </div>
           <MazeViewport game={displayGame} showFullMap={showFullMap} />
           <div className="action-readout">
@@ -717,6 +719,7 @@ function App() {
         <div className="replay-console-head">
           <div><PanelLabel>REPLAY LIBRARY</PanelLabel><h2>Review any recorded run</h2></div>
           <div className="replay-head-actions">
+            <span className={`replay-state replay-${replayStatus}`}>{isReplayMode ? `Replay · ${selectedReplay?.status ?? "recorded"}` : `Replay ${replayStatus}`}</span>
             <span>{replayRuns.length} saved runs</span>
             <button className="button replay-refresh" type="button" onClick={() => void refreshReplayRuns()}>Refresh</button>
           </div>
@@ -779,7 +782,7 @@ function App() {
         {replayLibraryError ? <p className="replay-library-error">{replayLibraryError}</p> : null}
       </section>
 
-      <footer className="footer-note"><span>solo walker</span><span>conversation-only memory · no map · no route tool · minimum optimal route {MIN_ROUTE_LENGTH}</span><span>echo / maze</span></footer>
+      <footer className="footer-note"><span>Echo Maze · solo walker · gpt-5.6 luna</span><span>minimum optimal route {MIN_ROUTE_LENGTH}</span></footer>
     </main>
   );
 }
