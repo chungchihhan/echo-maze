@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { DIRECTIONS, pointKey, samePoint, visibleWalkerPoints } from "../lib/maze/index.js";
 import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
+import { WalkerMarker } from "./walker-marker";
 
 type RelativePoint = { x: number; y: number };
 type ObservationDTO = {
@@ -320,7 +321,7 @@ function WalkerView({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
           const isExit = samePoint(point, game.maze.exit);
           return (
             <div className={`local-cell ${isCenter ? "local-center" : ""} ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isCenter ? <span className="local-walker">W</span> : null}
+              {isCenter ? <WalkerMarker /> : null}
               {isExit ? <span className="local-exit-mark">EXIT</span> : null}
             </div>
           );
@@ -341,7 +342,7 @@ function SpectatorMap({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
           return (
             <div className={`maze-cell ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
               {isExit ? <span className="exit-mark">EXIT</span> : null}
-              {isWalker ? <span className="spectator-walker">W</span> : null}
+              {isWalker ? <WalkerMarker /> : null}
             </div>
           );
         })}
@@ -501,7 +502,7 @@ function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMa
       <div className="agent-grid public-observation-grid">
         <article className="agent-card thought-card">
           <div className="card-head">
-            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>AGENT RESPONSE STREAM</PanelLabel><h2>How the Walker decides</h2></div></div>
+            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar"><WalkerMarker compact /></div><div><PanelLabel>AGENT RESPONSE STREAM</PanelLabel><h2>How the Walker decides</h2></div></div>
             <span className="visibility-tag">3 STAGES</span>
           </div>
           <div className="thought-disclaimer">Each turn separates maze-provided input, model-written navigation state and action, and environment feedback—not hidden chain of thought.</div>
@@ -509,7 +510,7 @@ function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMa
         </article>
         <article className="agent-card public-maze-card">
           <div className="card-head">
-            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar">W</div><div><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div></div>
+            <div className="agent-name-wrap"><div className="agent-avatar walker-avatar"><WalkerMarker compact /></div><div><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div></div>
             <span className={`visibility-tag ${showFullMap ? "spectator-tag" : "local-tag"}`}>{showFullMap ? "SPECTATOR" : "LINE OF SIGHT"}</span>
           </div>
           <MazeViewport game={game} showFullMap={showFullMap} />

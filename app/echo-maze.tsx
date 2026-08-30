@@ -17,6 +17,7 @@ import {
 import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
 import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } from "./demo-replay";
 import { HeroMaze } from "./hero-maze";
+import { WalkerMarker } from "./walker-marker";
 
 // Environment semantics (maze generation, movement, corridor line-of-sight)
 // live in ../lib/maze and are shared verbatim with the headless benchmark
@@ -102,7 +103,13 @@ type ReplayFrame = {
 };
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 
-const HERO_MAZE = generateMaze(seededRandom("ECHO-MAZE-HERO"), "HERO01");
+const HERO_MAZES = [
+  generateMaze(seededRandom("ECHO-MAZE-HERO-01"), "HERO01"),
+  generateMaze(seededRandom("ECHO-MAZE-HERO-02"), "HERO02"),
+  generateMaze(seededRandom("ECHO-MAZE-HERO-03"), "HERO03"),
+  generateMaze(seededRandom("ECHO-MAZE-HERO-04"), "HERO04"),
+  generateMaze(seededRandom("ECHO-MAZE-HERO-05"), "HERO05"),
+];
 
 function relativePositionAtObservation(history: WalkerTurn[], entryIndex: number): RelativePoint {
   const position = { x: 0, y: 0 };
@@ -425,7 +432,7 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
         {showReplayLink ? <a className="hero-replay-link" href="/replay">Open replay workspace <span aria-hidden="true">↗</span></a> : null}
       </div>
       <div className="intro-panel intro-panel-blue">
-        <HeroMaze maze={HERO_MAZE} />
+        <HeroMaze mazes={HERO_MAZES} />
         <div className="intro-note">
           <p>{isLab ? <>No map. No route tool. No notebook.<br />Only observations, decisions, and outcomes from this run.</> : <>Replay the decisions, outcomes, and memory<br />from a completed Walker run.</>}</p>
         </div>
@@ -446,7 +453,7 @@ function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
           const isExit = samePoint(point, game.maze.exit);
           return (
             <div className={`local-cell ${isCenter ? "local-center" : ""} ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isCenter ? <span className="local-walker" key={`w-${game.position.r}-${game.position.c}`}>W</span> : null}
+              {isCenter ? <WalkerMarker /> : null}
               {isExit ? <span className="local-exit-mark">EXIT</span> : null}
             </div>
           );
@@ -467,7 +474,7 @@ function SpectatorMap({ game, hidden }: { game: GameState; hidden: boolean }) {
           return (
             <div className={`maze-cell ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
               {isExit ? <span className="exit-mark">EXIT</span> : null}
-              {isWalker ? <span className="spectator-walker" key={`w-${game.position.r}-${game.position.c}`}>W</span> : null}
+              {isWalker ? <WalkerMarker /> : null}
             </div>
           );
         })}

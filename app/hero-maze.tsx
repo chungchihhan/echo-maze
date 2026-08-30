@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Group, Texture } from "three";
+import { shortestPath } from "../lib/maze/index.js";
 import type { Maze } from "../lib/maze/types.js";
 
 type WallSegment = { x1: number; z1: number; x2: number; z2: number };
@@ -11,6 +12,14 @@ const WALL_THICKNESS = 0.085;
 const WALL_STEP = 0.12;
 const WALL_LEVELS = 11;
 const ICE = "#f0f7ff";
+const WALKER_HEIGHT = 0.34;
+const ENTRY_RISE_MS = 620;
+const START_HOLD_MS = 900;
+const MOVE_MS_PER_CELL = 560;
+const EXIT_DROP_MS = 720;
+const EXIT_HOLD_MS = 900;
+const EXIT_RADIUS = 0.34;
+const EXIT_DROP_DISTANCE = 0.48;
 
 function getWallSegments(maze: Maze): WallSegment[] {
   const size = maze.cells.length;
@@ -150,12 +159,13 @@ function createWallMaterial(three: typeof import("three")) {
   });
 }
 
-export function HeroMaze({ maze }: { maze: Maze }) {
+export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const fallbackMaze = mazes[0]!;
 
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage) return;
+    if (!stage || mazes.length === 0) return;
 
     let disposed = false;
     let cleanup: (() => void) | null = null;
@@ -186,8 +196,7 @@ export function HeroMaze({ maze }: { maze: Maze }) {
       }
 
       const { OrbitControls } = controlsModule;
-      const size = maze.cells.length;
-      const segments = getWallSegments(maze);
+      const size = mazes[0].cells.length;
       const scene = new three.Scene();
       const camera = new three.PerspectiveCamera(42, 1, 0.1, 100);
       // Favor a closer, more immersive frame; edge cropping during auto-orbit is intentional.
@@ -212,17 +221,6 @@ export function HeroMaze({ maze }: { maze: Maze }) {
       controls.target.set(0, 0, 0);
       controls.update();
 
-      const mazeGroup = new three.Group();
-      scene.add(mazeGroup);
-
-      const floor = new three.Mesh(
-        new three.PlaneGeometry(size + 0.3, size + 0.3),
-        new three.MeshBasicMaterial({ color: 0x0033e5, transparent: true, opacity: 0.18, side: three.DoubleSide, depthWrite: false }),
-      );
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -0.035;
-      scene.add(floor);
-
       const grid = new three.GridHelper(size, size, 0x527ceb, 0x527ceb);
       const gridMaterials = (Array.isArray(grid.material) ? grid.material : [grid.material]) as Array<InstanceType<typeof three.LineBasicMaterial>>;
       gridMaterials.forEach((material) => {
@@ -235,59 +233,7 @@ export function HeroMaze({ maze }: { maze: Maze }) {
 
       const wallMaterial = createWallMaterial(three);
       const wallGeometries: Array<InstanceType<typeof three.BoxGeometry>> = [];
-      for (const segment of segments) {
-        const horizontal = Math.abs(segment.x2 - segment.x1) > Math.abs(segment.z2 - segment.z1);
-        const length = horizontal ? Math.abs(segment.x2 - segment.x1) : Math.abs(segment.z2 - segment.z1);
-        const geometry = horizontal
-          ? new three.BoxGeometry(length, WALL_HEIGHT, WALL_THICKNESS)
-          : new three.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, length);
-        const wall = new three.Mesh(geometry, wallMaterial);
-        wall.position.set((segment.x1 + segment.x2) / 2, WALL_HEIGHT / 2, (segment.z1 + segment.z2) / 2);
-        mazeGroup.add(wall);
-        wallGeometries.push(geometry);
-      }
-
-      const linePositions: number[] = [];
-      const addLine = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => {
-        linePositions.push(x1, y1, z1, x2, y2, z2);
-      };
-      for (const segment of segments) {
-        addLine(segment.x1, 0, segment.z1, segment.x2, 0, segment.z2);
-        addLine(segment.x1, WALL_HEIGHT, segment.z1, segment.x2, WALL_HEIGHT, segment.z2);
-        addLine(segment.x1, 0, segment.z1, segment.x1, WALL_HEIGHT, segment.z1);
-        addLine(segment.x2, 0, segment.z2, segment.x2, WALL_HEIGHT, segment.z2);
-      }
-      const lineGeometry = new three.BufferGeometry();
-      lineGeometry.setAttribute("position", new three.Float32BufferAttribute(linePositions, 3));
       const lineMaterial = new three.LineBasicMaterial({ color: ICE, transparent: true, opacity: 0.72, depthWrite: false });
-      const lines = new three.LineSegments(lineGeometry, lineMaterial);
-      mazeGroup.add(lines);
-
-      const particlePositions: number[] = [];
-      let particleIndex = 0;
-      for (const segment of segments) {
-        const dx = segment.x2 - segment.x1;
-        const dz = segment.z2 - segment.z1;
-        const length = Math.hypot(dx, dz);
-        const steps = Math.max(2, Math.ceil(length / WALL_STEP));
-        const normalX = -dz * 0.045;
-        const normalZ = dx * 0.045;
-        for (let step = 0; step <= steps; step += 1) {
-          const progress = step / steps;
-          for (let level = 0; level <= WALL_LEVELS; level += 1) {
-            const noise = seededNoise(particleIndex);
-            const y = 0.04 + (level / WALL_LEVELS) * (WALL_HEIGHT - 0.08) + (noise - 0.5) * 0.035;
-            for (const side of [-1, 1]) {
-              const x = segment.x1 + dx * progress + normalX * side + normalX * (noise - 0.5) * 0.35;
-              const z = segment.z1 + dz * progress + normalZ * side + normalZ * (noise - 0.5) * 0.35;
-              particlePositions.push(x, y, z);
-              particleIndex += 1;
-            }
-          }
-        }
-      }
-      const particleGeometry = new three.BufferGeometry();
-      particleGeometry.setAttribute("position", new three.Float32BufferAttribute(particlePositions, 3));
       const particleMaterial = new three.PointsMaterial({
         color: ICE,
         size: 0.06,
@@ -297,12 +243,8 @@ export function HeroMaze({ maze }: { maze: Maze }) {
         depthWrite: false,
         blending: three.AdditiveBlending,
       });
-      const particles = new three.Points(particleGeometry, particleMaterial);
-      mazeGroup.add(particles);
-
       const glyphTextures = new Map<string, Texture>();
       const glyphMaterials: Array<InstanceType<typeof three.SpriteMaterial>> = [];
-      const glyphGroup = new three.Group();
       const glyphs = ["@", "·", "+", "x", "/", "#", ":"];
       const textureFor = (value: string) => {
         const existing = glyphTextures.get(value);
@@ -311,42 +253,174 @@ export function HeroMaze({ maze }: { maze: Maze }) {
         glyphTextures.set(value, texture);
         return texture;
       };
-      segments.forEach((segment, segmentIndex) => {
-        const dx = segment.x2 - segment.x1;
-        const dz = segment.z2 - segment.z1;
-        const length = Math.hypot(dx, dz);
-        const steps = Math.max(2, Math.ceil(length / 0.42));
-        for (let step = 1; step < steps; step += 1) {
-          const progress = step / steps;
-          const glyph = glyphs[(segmentIndex + step) % glyphs.length];
-          const material = addGlyph(
-            three,
-            glyphGroup,
-            textureFor(glyph),
-            segment.x1 + dx * progress,
-            0.12 + seededNoise(segmentIndex * 20 + step) * (WALL_HEIGHT - 0.2),
-            segment.z1 + dz * progress,
-            0.18,
-            0.48,
-          );
-          glyphMaterials.push(material);
-        }
-      });
-      mazeGroup.add(glyphGroup);
+      const floorMaterial = new three.MeshBasicMaterial({ color: 0x9fbdff, transparent: true, opacity: 0.34, side: three.DoubleSide, depthWrite: true });
+      const floorGeometries: Array<InstanceType<typeof three.ShapeGeometry>> = [];
+      const lineGeometries: Array<InstanceType<typeof three.BufferGeometry>> = [];
+      const particleGeometries: Array<InstanceType<typeof three.BufferGeometry>> = [];
+      const exitGeometry = new three.CylinderGeometry(EXIT_RADIUS, EXIT_RADIUS * 0.92, 0.08, 40);
+      const exitMaterial = new three.MeshBasicMaterial({ color: 0x1749bd });
 
-      const markerTextures = new Map<string, Texture>();
-      const markerMaterials: Array<InstanceType<typeof three.SpriteMaterial>> = [];
-      const markerFor = (value: string) => {
-        const existing = markerTextures.get(value);
-        if (existing) return existing;
-        const texture = makeGlyphTexture(three, value, value === "EXIT" ? 128 : 64);
-        markerTextures.set(value, texture);
-        return texture;
+      const buildMazeScene = (maze: Maze, mazeIndex: number) => {
+        const group = new three.Group();
+        group.visible = mazeIndex === 0;
+        scene.add(group);
+        const segments = getWallSegments(maze);
+        const start = cellCenter(maze, maze.start);
+        const exit = cellCenter(maze, maze.exit);
+
+        const floorExtent = size / 2 + 0.15;
+        const floorShape = new three.Shape();
+        floorShape.moveTo(-floorExtent, -floorExtent);
+        floorShape.lineTo(floorExtent, -floorExtent);
+        floorShape.lineTo(floorExtent, floorExtent);
+        floorShape.lineTo(-floorExtent, floorExtent);
+        floorShape.closePath();
+        const exitOpening = new three.Path();
+        exitOpening.absarc(exit.x, -exit.z, EXIT_RADIUS, 0, Math.PI * 2, false);
+        floorShape.holes.push(exitOpening);
+        const floorGeometry = new three.ShapeGeometry(floorShape);
+        floorGeometries.push(floorGeometry);
+        const floor = new three.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.035;
+        group.add(floor);
+
+        for (const segment of segments) {
+          const horizontal = Math.abs(segment.x2 - segment.x1) > Math.abs(segment.z2 - segment.z1);
+          const length = horizontal ? Math.abs(segment.x2 - segment.x1) : Math.abs(segment.z2 - segment.z1);
+          const geometry = horizontal
+            ? new three.BoxGeometry(length, WALL_HEIGHT, WALL_THICKNESS)
+            : new three.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, length);
+          const wall = new three.Mesh(geometry, wallMaterial);
+          wall.position.set((segment.x1 + segment.x2) / 2, WALL_HEIGHT / 2, (segment.z1 + segment.z2) / 2);
+          group.add(wall);
+          wallGeometries.push(geometry);
+        }
+
+        const linePositions: number[] = [];
+        const addLine = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => {
+          linePositions.push(x1, y1, z1, x2, y2, z2);
+        };
+        for (const segment of segments) {
+          addLine(segment.x1, 0, segment.z1, segment.x2, 0, segment.z2);
+          addLine(segment.x1, WALL_HEIGHT, segment.z1, segment.x2, WALL_HEIGHT, segment.z2);
+          addLine(segment.x1, 0, segment.z1, segment.x1, WALL_HEIGHT, segment.z1);
+          addLine(segment.x2, 0, segment.z2, segment.x2, WALL_HEIGHT, segment.z2);
+        }
+        const lineGeometry = new three.BufferGeometry();
+        lineGeometry.setAttribute("position", new three.Float32BufferAttribute(linePositions, 3));
+        lineGeometries.push(lineGeometry);
+        group.add(new three.LineSegments(lineGeometry, lineMaterial));
+
+        const particlePositions: number[] = [];
+        let particleIndex = mazeIndex * 10000;
+        for (const segment of segments) {
+          const dx = segment.x2 - segment.x1;
+          const dz = segment.z2 - segment.z1;
+          const length = Math.hypot(dx, dz);
+          const steps = Math.max(2, Math.ceil(length / WALL_STEP));
+          const normalX = -dz * 0.045;
+          const normalZ = dx * 0.045;
+          for (let step = 0; step <= steps; step += 1) {
+            const progress = step / steps;
+            for (let level = 0; level <= WALL_LEVELS; level += 1) {
+              const noise = seededNoise(particleIndex);
+              const y = 0.04 + (level / WALL_LEVELS) * (WALL_HEIGHT - 0.08) + (noise - 0.5) * 0.035;
+              for (const side of [-1, 1]) {
+                const x = segment.x1 + dx * progress + normalX * side + normalX * (noise - 0.5) * 0.35;
+                const z = segment.z1 + dz * progress + normalZ * side + normalZ * (noise - 0.5) * 0.35;
+                particlePositions.push(x, y, z);
+                particleIndex += 1;
+              }
+            }
+          }
+        }
+        const particleGeometry = new three.BufferGeometry();
+        particleGeometry.setAttribute("position", new three.Float32BufferAttribute(particlePositions, 3));
+        particleGeometries.push(particleGeometry);
+        group.add(new three.Points(particleGeometry, particleMaterial));
+
+        const glyphGroup = new three.Group();
+        segments.forEach((segment, segmentIndex) => {
+          const dx = segment.x2 - segment.x1;
+          const dz = segment.z2 - segment.z1;
+          const length = Math.hypot(dx, dz);
+          const steps = Math.max(2, Math.ceil(length / 0.42));
+          for (let step = 1; step < steps; step += 1) {
+            const progress = step / steps;
+            const glyph = glyphs[(segmentIndex + step) % glyphs.length];
+            glyphMaterials.push(addGlyph(
+              three,
+              glyphGroup,
+              textureFor(glyph),
+              segment.x1 + dx * progress,
+              0.12 + seededNoise(mazeIndex * 1000 + segmentIndex * 20 + step) * (WALL_HEIGHT - 0.2),
+              segment.z1 + dz * progress,
+              0.18,
+              0.48,
+            ));
+          }
+        });
+        group.add(glyphGroup);
+
+        const exitHole = new three.Mesh(exitGeometry, exitMaterial);
+        exitHole.position.set(exit.x, -0.075, exit.z);
+        group.add(exitHole);
+
+        const walkerPath = shortestPath(maze.cells, maze.start, maze.exit).map((point) => cellCenter(maze, point));
+        const travelDuration = Math.max(0, walkerPath.length - 1) * MOVE_MS_PER_CELL;
+        const travelStart = ENTRY_RISE_MS + START_HOLD_MS;
+        const dropStart = travelStart + travelDuration;
+        return {
+          group,
+          start,
+          exit,
+          walkerPath,
+          travelDuration,
+          travelStart,
+          dropStart,
+          animationDuration: dropStart + EXIT_DROP_MS + EXIT_HOLD_MS,
+        };
       };
-      const start = cellCenter(maze, maze.start);
-      const exit = cellCenter(maze, maze.exit);
-      markerMaterials.push(addGlyph(three, mazeGroup, markerFor("W"), start.x, 0.86, start.z, 0.48, 0.92));
-      markerMaterials.push(addGlyph(three, mazeGroup, markerFor("EXIT"), exit.x, 0.42, exit.z, 0.78, 0.72));
+
+      const firstMaze = buildMazeScene(mazes[0], 0);
+      const mazeScenes = new Map<number, typeof firstMaze>([[0, firstMaze]]);
+      let preloadHandle: number | null = null;
+      let preloadUsesIdleCallback = false;
+      const schedulePreload = (mazeIndex: number) => {
+        if (mazeIndex >= mazes.length || disposed) return;
+        const preload = () => {
+          preloadHandle = null;
+          if (disposed) return;
+          if (!mazeScenes.has(mazeIndex)) mazeScenes.set(mazeIndex, buildMazeScene(mazes[mazeIndex], mazeIndex));
+          schedulePreload(mazeIndex + 1);
+        };
+        if (typeof window.requestIdleCallback === "function") {
+          preloadUsesIdleCallback = true;
+          preloadHandle = window.requestIdleCallback(preload, { timeout: 1800 });
+        } else {
+          preloadUsesIdleCallback = false;
+          preloadHandle = window.setTimeout(preload, 180);
+        }
+      };
+      schedulePreload(1);
+
+      const walkerGeometry = new three.SphereGeometry(0.28, 32, 24);
+      const walkerMaterial = new three.MeshStandardMaterial({
+        color: 0xf0f7ff,
+        emissive: 0x527ceb,
+        emissiveIntensity: 0.3,
+        metalness: 0.08,
+        roughness: 0.22,
+        transparent: true,
+      });
+      const walkerBall = new three.Mesh(walkerGeometry, walkerMaterial);
+      walkerBall.position.set(firstMaze.start.x, WALKER_HEIGHT - EXIT_DROP_DISTANCE, firstMaze.start.z);
+      scene.add(new three.HemisphereLight(0xffffff, 0x0033e5, 2.2));
+      const walkerLight = new three.DirectionalLight(0xffffff, 2.4);
+      walkerLight.position.set(-3, 7, 4);
+      scene.add(walkerLight);
+      scene.add(walkerBall);
 
       const atmospherePositions: number[] = [];
       for (let index = 0; index < 90; index += 1) {
@@ -385,10 +459,17 @@ export function HeroMaze({ maze }: { maze: Maze }) {
 
       const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
       let reducedMotion = motionQuery.matches;
+      let walkerAnimationStart: number | null = null;
+      let activeMazeIndex = 0;
       controls.autoRotate = !reducedMotion;
       const onMotionChange = (event: MediaQueryListEvent) => {
         reducedMotion = event.matches;
         controls.autoRotate = !reducedMotion;
+        walkerAnimationStart = null;
+        mazeScenes.forEach((item, index) => { item.group.visible = index === 0; });
+        activeMazeIndex = 0;
+        walkerMaterial.opacity = 1;
+        walkerBall.position.set(firstMaze.start.x, WALKER_HEIGHT, firstMaze.start.z);
       };
       motionQuery.addEventListener("change", onMotionChange);
 
@@ -397,6 +478,51 @@ export function HeroMaze({ maze }: { maze: Maze }) {
         if (disposed) return;
         controls.update();
         if (!reducedMotion) {
+          if (walkerAnimationStart === null) walkerAnimationStart = time;
+          let activeMaze = mazeScenes.get(activeMazeIndex)!;
+          let elapsed = time - walkerAnimationStart;
+          while (elapsed >= activeMaze.animationDuration) {
+            const nextMazeIndex = (activeMazeIndex + 1) % mazes.length;
+            const nextMaze = mazeScenes.get(nextMazeIndex);
+            if (!nextMaze) {
+              walkerAnimationStart = time - activeMaze.animationDuration;
+              elapsed = activeMaze.animationDuration - 1;
+              break;
+            }
+            walkerAnimationStart += activeMaze.animationDuration;
+            activeMaze.group.visible = false;
+            activeMazeIndex = nextMazeIndex;
+            activeMaze = nextMaze;
+            activeMaze.group.visible = true;
+            elapsed = time - walkerAnimationStart;
+          }
+          if (elapsed < ENTRY_RISE_MS) {
+            const entryProgress = elapsed / ENTRY_RISE_MS;
+            const easedEntry = 1 - Math.pow(1 - entryProgress, 3);
+            walkerMaterial.opacity = easedEntry;
+            walkerBall.position.set(activeMaze.start.x, WALKER_HEIGHT - EXIT_DROP_DISTANCE * (1 - easedEntry), activeMaze.start.z);
+          } else if (elapsed < activeMaze.travelStart || activeMaze.walkerPath.length < 2) {
+            walkerMaterial.opacity = 1;
+            walkerBall.position.set(activeMaze.start.x, WALKER_HEIGHT, activeMaze.start.z);
+          } else if (elapsed < activeMaze.dropStart) {
+            walkerMaterial.opacity = 1;
+            const pathProgress = (elapsed - activeMaze.travelStart) / MOVE_MS_PER_CELL;
+            const segmentIndex = Math.min(Math.floor(pathProgress), activeMaze.walkerPath.length - 2);
+            const segmentProgress = pathProgress - segmentIndex;
+            const easedProgress = segmentProgress * segmentProgress * (3 - 2 * segmentProgress);
+            const from = activeMaze.walkerPath[segmentIndex];
+            const to = activeMaze.walkerPath[segmentIndex + 1];
+            walkerBall.position.set(
+              from.x + (to.x - from.x) * easedProgress,
+              WALKER_HEIGHT + Math.sin(segmentProgress * Math.PI) * 0.045,
+              from.z + (to.z - from.z) * easedProgress,
+            );
+          } else {
+            const dropProgress = Math.min(1, (elapsed - activeMaze.dropStart) / EXIT_DROP_MS);
+            const easedDrop = dropProgress * dropProgress;
+            walkerMaterial.opacity = 1 - Math.max(0, (dropProgress - 0.55) / 0.45);
+            walkerBall.position.set(activeMaze.exit.x, WALKER_HEIGHT - easedDrop * EXIT_DROP_DISTANCE, activeMaze.exit.z);
+          }
           const pulse = Math.sin(time * 0.0015) * 0.08;
           particleMaterial.opacity = 0.75 + pulse;
           atmosphereMaterial.opacity = 0.28 + pulse * 0.35;
@@ -410,22 +536,29 @@ export function HeroMaze({ maze }: { maze: Maze }) {
 
       cleanup = () => {
         window.cancelAnimationFrame(frameId);
+        if (preloadHandle !== null) {
+          if (preloadUsesIdleCallback) window.cancelIdleCallback(preloadHandle);
+          else window.clearTimeout(preloadHandle);
+        }
         observer.disconnect();
         motionQuery.removeEventListener("change", onMotionChange);
         controls.dispose();
         wallGeometries.forEach((geometry) => geometry.dispose());
         wallMaterial.dispose();
-        lineGeometry.dispose();
+        lineGeometries.forEach((geometry) => geometry.dispose());
         lineMaterial.dispose();
-        particleGeometry.dispose();
+        particleGeometries.forEach((geometry) => geometry.dispose());
         particleMaterial.dispose();
-        floor.geometry.dispose();
-        (floor.material as InstanceType<typeof three.MeshBasicMaterial>).dispose();
+        floorGeometries.forEach((geometry) => geometry.dispose());
+        floorMaterial.dispose();
         grid.geometry.dispose();
         gridMaterials.forEach((material) => material.dispose());
         glyphMaterials.forEach((material) => material.dispose());
-        markerMaterials.forEach((material) => material.dispose());
-        [...glyphTextures.values(), ...markerTextures.values()].forEach((texture) => texture.dispose());
+        walkerGeometry.dispose();
+        walkerMaterial.dispose();
+        exitGeometry.dispose();
+        exitMaterial.dispose();
+        [...glyphTextures.values()].forEach((texture) => texture.dispose());
         atmosphereGeometry.dispose();
         atmosphereMaterial.dispose();
         renderer.dispose();
@@ -439,11 +572,11 @@ export function HeroMaze({ maze }: { maze: Maze }) {
       disposed = true;
       cleanup?.();
     };
-  }, [maze]);
+  }, [mazes]);
 
   return (
     <div ref={stageRef} className="hero-maze-stage" aria-label="Interactive 3D maze. The camera auto-orbits while idle; drag to steer from the default top-down view.">
-      {createFallback(maze)}
+      {createFallback(fallbackMaze)}
       <span className="sr-only">Interactive three-dimensional maze. The camera slowly orbits while idle; drag to steer it. The initial camera is a top-down view.</span>
     </div>
   );
