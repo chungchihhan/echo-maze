@@ -159,7 +159,6 @@ input:focus-visible {
 
 .brand-lockup,
 .top-actions,
-.agent-name-wrap,
 .run-status,
 .control-actions,
 .map-legend,
@@ -528,24 +527,7 @@ h1 em {
   color: var(--faint);
 }
 
-.agent-name-wrap { gap: 12px; min-width: 0; }
-
-.agent-avatar {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-  color: var(--line-strong);
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 400;
-}
-
-.walker-avatar { color: var(--dusk); }
+.agent-name-wrap { min-width: 0; }
 
 .card-head h2 {
   margin: 4px 0 0;
@@ -576,7 +558,7 @@ h1 em {
   text-transform: uppercase;
 }
 
-.map-heading span:last-child { color: var(--subtle); text-align: right; }
+.map-heading span { color: var(--muted); }
 
 .maze-grid { display: grid; grid-template-columns: repeat(9, 1fr); }
 
@@ -832,6 +814,16 @@ h1 em {
 .replay-console-head { justify-content: space-between; gap: 24px; margin-bottom: 24px; }
 .replay-console-head h2 { margin: 4px 0 0; color: var(--ink); font-family: var(--font-display); font-size: var(--text-heading-sm); font-weight: 400; letter-spacing: var(--tracking-heading-sm); line-height: var(--leading-heading-sm); }
 .replay-head-actions { gap: 12px; color: var(--muted); font-family: var(--font-sans); font-size: var(--text-caption); font-weight: 500; text-transform: uppercase; }
+.replay-state {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  color: var(--muted);
+}
+.replay-state.replay-recording { border-color: var(--success); color: var(--success); }
+.replay-state.replay-error { border-color: var(--alert); color: var(--alert); }
 .replay-refresh, .replay-restart, .replay-play { padding: 6px 12px; font-size: var(--text-caption); }
 .replay-refresh, .replay-restart { border-color: var(--line); color: var(--muted); }
 .replay-refresh:hover:not(:disabled), .replay-restart:hover:not(:disabled) { border-color: var(--line-strong); color: var(--faint); }
