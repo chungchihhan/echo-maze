@@ -1,21 +1,25 @@
 /**
- * Immutable benchmark fixture loading and verification.
+ * Seeded benchmark fixture generation, persistence, loading, and verification.
  *
- * Fixtures are frozen maze snapshots. The runtime never re-generates a maze
- * from a seed; the generator is only used by the authoring script
- * (scripts/generate-fixtures.mjs) and by verification (BFS cross-check).
+ * Every batch generates its own stratified suite, then freezes the complete
+ * snapshots inside that batch's artifacts for resume, summary, and replay.
  */
 
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { canMove, shortestPath, samePoint } from "../lib/maze/index.js";
-import { FIXTURE_IDS, GENERATOR_VERSION, BENCHMARK_VERSION, sha256 } from "./contract.js";
-
-const FIXTURES_DIR = path.dirname(fileURLToPath(import.meta.url)) + "/fixtures";
+import { canMove, generateMaze, seededRandom, shortestPath, samePoint } from "../lib/maze/index.js";
+import {
+  BENCHMARK_VERSION,
+  GENERATOR_VERSION,
+  MAX_MAZES_PER_TIER,
+  ROUTE_LENGTH_TIERS,
+  sha256,
+} from "./contract.js";
 
 /** @typedef {import("../lib/maze/types.js").Point} Point */
+const LEGACY_FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 /**
  * Frozen maze snapshot on disk.
@@ -25,6 +29,7 @@ const FIXTURES_DIR = path.dirname(fileURLToPath(import.meta.url)) + "/fixtures";
  *   seed: string,
  *   generatorVersion: string,
  *   benchmarkVersion: string,
+ *   difficultyTier: "easy"|"medium"|"hard",
  *   width: number,
  *   height: number,
  *   start: Point,
@@ -36,16 +41,20 @@ const FIXTURES_DIR = path.dirname(fileURLToPath(import.meta.url)) + "/fixtures";
  * }} MazeFixture
  */
 
-function fixturePath(fixtureId) {
-  return path.join(FIXTURES_DIR, `${fixtureId}.json`);
+function fixturePath(batchDir, fixtureId) {
+  return path.join(batchDir, "fixtures", `${fixtureId}.json`);
 }
 
 /**
+ * @param {string} batchDir
  * @param {string} fixtureId
  * @returns {Promise<MazeFixture>}
  */
-export async function loadFixture(fixtureId) {
-  const raw = await readFile(fixturePath(fixtureId), "utf8");
+export async function loadFixture(batchDir, fixtureId) {
+  const raw = await readFile(fixturePath(batchDir, fixtureId), "utf8").catch((error) => {
+    if (error?.code !== "ENOENT") throw error;
+    return readFile(path.join(LEGACY_FIXTURES_DIR, `${fixtureId}.json`), "utf8");
+  });
   return JSON.parse(raw);
 }
 
@@ -60,9 +69,41 @@ export function computeFixtureHash(fixture) {
   return sha256(rest);
 }
 
-/** Load all fixtures in contract order. */
-export async function loadAllFixtures() {
-  return Promise.all(FIXTURE_IDS.map(loadFixture));
+/** Load all batch-local fixtures in manifest order. */
+export async function loadAllFixtures(batchDir, fixtureOrder) {
+  return Promise.all(fixtureOrder.map((fixtureId) => loadFixture(batchDir, fixtureId)));
+}
+
+/** Generate one deterministic, stratified fixture suite. */
+export function generateFixtureSuite(suiteSeed, mazesPerTier) {
+  if (typeof suiteSeed !== "string" || suiteSeed.trim().length === 0) {
+    throw new Error("suiteSeed must be a non-empty string.");
+  }
+  if (!Number.isInteger(mazesPerTier) || mazesPerTier < 1 || mazesPerTier > MAX_MAZES_PER_TIER) {
+    throw new Error(`mazesPerTier must be an integer from 1 to ${MAX_MAZES_PER_TIER}.`);
+  }
+
+  return ROUTE_LENGTH_TIERS.flatMap((tier) =>
+    Array.from({ length: mazesPerTier }, (_, index) => {
+      const sequence = String(index + 1).padStart(3, "0");
+      const fixtureId = `echo-maze-bench-${BENCHMARK_VERSION}-${tier.id}-${sequence}`;
+      const mazeSeed = `${suiteSeed}:${tier.id}:${sequence}`;
+      const maze = generateMaze(seededRandom(mazeSeed), mazeSeed, {
+        size: 9,
+        minRouteLength: tier.min,
+        maxRouteLength: tier.max,
+      });
+      return fixtureFromMaze(maze, fixtureId, tier.id);
+    }),
+  );
+}
+
+/** Persist generated snapshots inside a batch artifact directory. */
+export async function writeFixtureSuite(batchDir, fixtures) {
+  const fixturesDir = path.join(batchDir, "fixtures");
+  await mkdir(fixturesDir, { recursive: true });
+  await Promise.all(fixtures.map((fixture) =>
+    writeFile(fixturePath(batchDir, fixture.fixtureId), `${JSON.stringify(fixture, null, 2)}\n`, "utf8")));
 }
 
 /**
@@ -82,6 +123,17 @@ export function verifyFixture(fixture) {
   }
   if (fixture.benchmarkVersion !== BENCHMARK_VERSION) {
     problems.push(`${fixture.fixtureId}: benchmarkVersion mismatch`);
+  }
+  const tier = ROUTE_LENGTH_TIERS.find((candidate) => candidate.id === fixture.difficultyTier);
+  if (!tier) {
+    problems.push(`${fixture.fixtureId}: unknown difficultyTier`);
+  } else if (
+    fixture.optimalPathLength < tier.min ||
+    fixture.optimalPathLength > tier.max
+  ) {
+    problems.push(
+      `${fixture.fixtureId}: optimal route ${fixture.optimalPathLength} outside ${tier.id} tier ${tier.min}-${tier.max}`,
+    );
   }
   if (fixture.walls.length !== size || fixture.walls.some((row) => row.length !== size)) {
     problems.push(`${fixture.fixtureId}: walls grid is not ${size}x${size}`);
@@ -141,15 +193,17 @@ export function fixtureCells(fixture) {
  *
  * @param {{ cells: import("../lib/maze/types.js").Cell[][], start: Point, exit: Point, routeLength: number, seed: string }} maze
  * @param {string} fixtureId
+ * @param {"easy"|"medium"|"hard"} difficultyTier
  * @returns {MazeFixture}
  */
-export function fixtureFromMaze(maze, fixtureId) {
+export function fixtureFromMaze(maze, fixtureId, difficultyTier) {
   const path = shortestPath(maze.cells, maze.start, maze.exit);
   const record = {
     fixtureId,
     seed: maze.seed,
     generatorVersion: GENERATOR_VERSION,
     benchmarkVersion: BENCHMARK_VERSION,
+    difficultyTier,
     width: maze.cells.length,
     height: maze.cells.length,
     start: { ...maze.start },

@@ -12,11 +12,14 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+const GIT_OUTPUT_MAX_BUFFER = 64 * 1024 * 1024;
+
 function gitText(args, cwd) {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: GIT_OUTPUT_MAX_BUFFER,
   });
 }
 
@@ -25,6 +28,7 @@ function gitBytes(args, cwd) {
     cwd,
     encoding: null,
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: GIT_OUTPUT_MAX_BUFFER,
   });
 }
 

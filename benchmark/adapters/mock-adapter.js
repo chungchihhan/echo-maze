@@ -52,18 +52,12 @@ export function createMockAdapter(options = {}) {
     integrate(state.map, state.pos, observation);
 
     const direction = chooseDirection(state);
-    const summaryText = observation.exitVisible
-      ? "The exit is visible along a corridor."
-      : `I can see ${observation.openDirections.length} open directions and mapped nearby corridors.`;
-    const reasoningText = delayMs >= 0 && direction
-      ? `Exploring systematically from my map of known corridors; heading ${direction} to reach the nearest unexplored edge.`
-      : "No open direction remains.";
     const parsed = {
-      observation_summary: summaryText,
-      reasoning_summary: reasoningText,
-      believed_position: { x: state.pos.x, y: state.pos.y },
-      coordinate_note: `Believed (${state.pos.x},${state.pos.y}); known cells: ${state.map.size}.`,
-      direction,
+      estimated_position: { x: state.pos.x, y: state.pos.y },
+      notes: direction
+        ? `Estimated (${state.pos.x},${state.pos.y}); known cells: ${state.map.size}; next action: ${direction}.`
+        : `Estimated (${state.pos.x},${state.pos.y}); known cells: ${state.map.size}; no open direction remains.`,
+      action: direction,
     };
     return Promise.resolve({
       attempts: [{
