@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { DIRECTIONS, pointKey, samePoint, visibleWalkerPoints } from "../lib/maze/index.js";
 import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
-import { WalkerMarker } from "./walker-marker";
+import { GridWalkerMarker, WalkerMarker } from "./walker-marker";
 
 type RelativePoint = { x: number; y: number };
 type ObservationDTO = {
@@ -317,15 +317,14 @@ function WalkerView({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
         {game.maze.cells.flat().map((cell) => {
           const point = { r: cell.r, c: cell.c };
           if (!visible.has(pointKey(point))) return <div className="local-cell local-hidden" key={pointKey(point)} aria-label="Area hidden by walls" />;
-          const isCenter = samePoint(point, game.position);
           const isExit = samePoint(point, game.maze.exit);
           return (
-            <div className={`local-cell ${isCenter ? "local-center" : ""} ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isCenter ? <WalkerMarker /> : null}
+            <div className={`local-cell ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
               {isExit ? <span className="local-exit-mark">EXIT</span> : null}
             </div>
           );
         })}
+        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
       </div>
     </div>
   );
@@ -337,15 +336,14 @@ function SpectatorMap({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
       <div className="maze-grid full-maze" aria-label="Complete maze spectator view">
         {game.maze.cells.flat().map((cell) => {
           const point = { r: cell.r, c: cell.c };
-          const isWalker = samePoint(point, game.position);
           const isExit = samePoint(point, game.maze.exit);
           return (
             <div className={`maze-cell ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
               {isExit ? <span className="exit-mark">EXIT</span> : null}
-              {isWalker ? <WalkerMarker /> : null}
             </div>
           );
         })}
+        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
       </div>
     </div>
   );
