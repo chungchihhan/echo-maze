@@ -336,9 +336,11 @@ function SpectatorMap({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
       <div className="maze-grid full-maze" aria-label="Complete maze spectator view">
         {game.maze.cells.flat().map((cell) => {
           const point = { r: cell.r, c: cell.c };
+          const isStart = samePoint(point, game.maze.start);
           const isExit = samePoint(point, game.maze.exit);
           return (
-            <div className={`maze-cell ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
+            <div className={`maze-cell ${isStart ? "cell-start" : ""} ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
+              {isStart ? <span className="start-mark">START</span> : null}
               {isExit ? <span className="exit-mark">EXIT</span> : null}
             </div>
           );
