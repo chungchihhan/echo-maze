@@ -40,7 +40,10 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(text, /TURN/);
   assert.match(text, /LAST ACTION/);
   assert.match(text, /MODEL ESTIMATE/);
-  assert.match(text, /STEPS/);
+  assert.match(text, /MOVES/);
+  assert.match(text, /WALL HITS/);
+  assert.match(text, /Exploring the maze/);
+  assert.match(text, /shortest path 26 moves/i);
   assert.match(text, /ACTION/);
   assert.doesNotMatch(text, /WALKER OUTPUT|ENVIRONMENT RESULT|COORDINATE STATUS/);
   assert.doesNotMatch(text, /OUTCOME/);
