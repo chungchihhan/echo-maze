@@ -2,9 +2,9 @@
  * Echo Maze Benchmark v0 verification command.
  *
  * Validates the whole benchmark surface without any network access:
- * 1. Fixture integrity: count, seed uniqueness, hash uniqueness, committed
- *    hashes match content, BFS shortest path equals frozen optimal length,
- *    valid start/exit.
+ * 1. Fixture integrity: deterministic tier counts, seed/hash uniqueness,
+ *    hashes matching content, BFS shortest path matching the frozen optimal
+ *    length, and valid start/exit.
  * 2. Observation safety: the narrow DTO never contains the full maze, exit
  *    coordinates, the seed, the optimal route, or unseen cells.
  * 3. UI/core transition consistency: lib/maze movement semantics match the
@@ -21,11 +21,11 @@ import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-import { FIXTURE_IDS } from "./contract.js";
+import { DEFAULT_MAZES_PER_TIER, ROUTE_LENGTH_TIERS } from "./contract.js";
 import {
   computeFixtureHash,
   fixtureCells,
-  loadAllFixtures,
+  generateFixtureSuite,
   verifyFixture,
 } from "./fixtures.js";
 import { runEpisode } from "./episode.js";
@@ -45,29 +45,39 @@ function check(name, fn) {
 }
 
 async function main() {
-  const fixtures = await loadAllFixtures();
+  const fixtures = generateFixtureSuite("verify-suite", DEFAULT_MAZES_PER_TIER);
   const byId = new Map(fixtures.map((fixture) => [fixture.fixtureId, fixture]));
+  const fixtureIds = fixtures.map((fixture) => fixture.fixtureId);
 
   console.log("fixtures");
-  await check("fixture count == 10 in contract order", () => {
-    assert.equal(fixtures.length, 10);
-    assert.deepEqual(fixtures.map((fixture) => fixture.fixtureId), FIXTURE_IDS);
+  await check("fixture suite has equal tier counts in deterministic order", () => {
+    assert.equal(fixtures.length, ROUTE_LENGTH_TIERS.length * DEFAULT_MAZES_PER_TIER);
+    for (const tier of ROUTE_LENGTH_TIERS) {
+      assert.equal(fixtures.filter((fixture) => fixture.difficultyTier === tier.id).length, DEFAULT_MAZES_PER_TIER);
+    }
+    assert.deepEqual(
+      generateFixtureSuite("verify-suite", DEFAULT_MAZES_PER_TIER),
+      fixtures,
+    );
   });
   await check("seeds are unique", () => {
-    assert.equal(new Set(fixtures.map((fixture) => fixture.seed)).size, 10);
+    assert.equal(new Set(fixtures.map((fixture) => fixture.seed)).size, fixtures.length);
   });
   await check("fixture hashes are unique", () => {
-    assert.equal(new Set(fixtures.map((fixture) => fixture.fixtureHash)).size, 10);
+    assert.equal(new Set(fixtures.map((fixture) => fixture.fixtureHash)).size, fixtures.length);
   });
-  await check("committed hashes match content + BFS matches frozen optimal path", () => {
+  await check("generated hashes match content + BFS matches frozen optimal path", () => {
     const problems = fixtures.flatMap(verifyFixture);
     assert.deepEqual(problems, []);
-    for (const fixture of fixtures) {
+    fixtures.forEach((fixture) => {
+      const tier = ROUTE_LENGTH_TIERS.find((candidate) => candidate.id === fixture.difficultyTier);
       assert.equal(computeFixtureHash(fixture), fixture.fixtureHash);
-      assert.ok(fixture.optimalPathLength >= 24, "optimal route below v0 minimum");
+      assert.ok(tier);
+      assert.ok(fixture.optimalPathLength >= tier.min, "optimal route below assigned tier");
+      assert.ok(fixture.optimalPathLength <= tier.max, "optimal route above assigned tier");
       assert.equal(fixture.optimalPath[0].r, fixture.start.r);
       assert.equal(fixture.optimalPath.at(-1).r, fixture.exit.r);
-    }
+    });
   });
 
   console.log("observation safety");
@@ -146,7 +156,7 @@ async function main() {
     assert.equal(percentile([], 0.5), null);
   });
   await check("metrics rebuild from synthetic event logs (retry/invalid/api accounting)", () => {
-    const fixture = byId.get(FIXTURE_IDS[0]);
+    const fixture = byId.get(fixtureIds[0]);
     const solvedLog = [
       { type: "episode_start", fixtureId: fixture.fixtureId },
       { type: "turn_start", turn: 1, observation: {} },
@@ -198,7 +208,7 @@ async function main() {
   try {
     /** @type {Array<{ events: any[], result: any }>} */
     const runs = [];
-    await check("all 10 mock episodes reach a terminal status with isolation", async () => {
+    await check("all 9 mock episodes reach a terminal status with isolation", async () => {
       for (const fixture of fixtures) {
         const events = [];
         const result = await runEpisode({

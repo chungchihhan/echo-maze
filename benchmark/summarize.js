@@ -13,7 +13,7 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { BENCHMARK_VERSION } from "./contract.js";
+import { BENCHMARK_VERSION, ROUTE_LENGTH_TIERS } from "./contract.js";
 import { loadFixture } from "./fixtures.js";
 import { computeBatchLatency, computeBatchMetrics, computeEpisodeMetrics } from "./metrics.js";
 
@@ -36,7 +36,7 @@ export async function loadBatch(batchDir) {
       .map((line) => JSON.parse(line));
     episodes.push({ fixtureId: entry, events });
   }
-  // Keep contract fixture order.
+  // Keep this batch's generated fixture order.
   const order = manifest.fixtureOrder ?? [];
   episodes.sort((a, b) => order.indexOf(a.fixtureId) - order.indexOf(b.fixtureId));
   return { manifest, episodes };
@@ -61,11 +61,22 @@ export async function regenerateSummary(batchDir) {
   /** @type {Array<Record<string, unknown>>} */
   const episodeMetrics = [];
   for (const episode of episodes) {
-    const fixture = await loadFixture(episode.fixtureId);
+    const fixture = await loadFixture(batchDir, episode.fixtureId);
     episodeMetrics.push(computeEpisodeMetrics(episode.events, fixture));
   }
 
   const batch = computeBatchMetrics(episodeMetrics);
+  const difficultyTiers = Object.fromEntries(
+    ROUTE_LENGTH_TIERS.map((tier) => [
+      tier.id,
+      {
+        label: tier.label,
+        minRouteLength: tier.min,
+        maxRouteLength: tier.max,
+        ...computeBatchMetrics(episodeMetrics.filter((episode) => episode.difficultyTier === tier.id)),
+      },
+    ]),
+  );
   const latency = computeBatchLatency(episodes.map((episode) => episode.events));
   const mode = manifest.mode ?? "live";
 
@@ -74,6 +85,8 @@ export async function regenerateSummary(batchDir) {
     benchmarkVersion: manifest.benchmarkVersion ?? BENCHMARK_VERSION,
     policyRevision: manifest.policyRevision ?? "v0.0",
     batchId: manifest.batchId,
+    suiteSeed: manifest.suiteSeed ?? null,
+    mazesPerTier: manifest.mazesPerTier ?? null,
     mode,
     resultClass: manifest.resultClass ?? (mode === "dry-run" ? "exploratory" : "unknown"),
     provider: manifest.provider ?? "openai",
@@ -95,6 +108,7 @@ export async function regenerateSummary(batchDir) {
     latency,
     totals: batch.totals,
     statusCounts: batch.statusCounts,
+    difficultyTiers,
     hashes: {
       fixtureSetHash: manifest.fixtureSetHash,
       promptHash: manifest.promptHash,
@@ -149,6 +163,9 @@ function renderMarkdown(summary) {
   if (s.mode === "dry-run") lines.push("> ⚠️ DRY-RUN (deterministic mock adapter) — not a live gpt-5.6-luna result.");
   lines.push("");
   lines.push(`${s.solved}/${s.totalEpisodes ?? s.episodes.length} solved · ${percent(s.successRate)} success`);
+  if (s.suiteSeed) {
+    lines.push(`Suite seed: \`${s.suiteSeed}\` · ${s.mazesPerTier} maze(s) per tier`);
+  }
   lines.push("");
   lines.push(`- Mean SPL: ${num(s.meanSpl === null ? null : round(s.meanSpl))}`);
   lines.push(`- Solved-only path efficiency: ${num(s.solvedOnlyPathEfficiency === null ? null : round(s.solvedOnlyPathEfficiency))}`);
@@ -160,11 +177,20 @@ function renderMarkdown(summary) {
   lines.push(`- Request latency p50/p95/max: ${num(s.latency.p50)} / ${num(s.latency.p95)} / ${num(s.latency.max)} ms (request total ${num(s.latency.totalRequestLatencyMs)} ms over ${s.latency.samples} attempts)`);
   lines.push(`- Token usage: input ${s.totals.tokens.inputTokens} · output ${s.totals.tokens.outputTokens} · reasoning ${s.totals.tokens.reasoningTokens} · total ${s.totals.tokens.totalTokens}`);
   lines.push("");
-  lines.push("| Fixture | Status | Turns | Moves | Wall hits | Path eff | SPL | p50 ms | Tokens |");
-  lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+  lines.push("## Results by difficulty");
+  lines.push("");
+  lines.push("| Tier | Optimal route | Solved | Success | Mean SPL |");
+  lines.push("| --- | --- | --- | --- | --- |");
+  for (const tier of Object.values(s.difficultyTiers ?? {})) {
+    lines.push(`| ${tier.label} | ${tier.minRouteLength}–${tier.maxRouteLength} | ${tier.solved}/${tier.totalEpisodes} | ${percent(tier.successRate)} | ${num(tier.meanSpl === null ? null : round(tier.meanSpl))} |`);
+  }
+  lines.push("");
+  lines.push("| Fixture | Tier | Status | Turns | Moves | Wall hits | Path eff | SPL | p50 ms | Tokens |");
+  lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const episode of s.episodes) {
     lines.push([
       episode.fixtureId,
+      episode.difficultyTier ?? "n/a",
       episode.status,
       episode.attemptedTurns,
       episode.successfulMoves,

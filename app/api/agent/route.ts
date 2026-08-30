@@ -23,11 +23,9 @@ type SoloWalkerObservation = {
 type SoloWalkerTurn = {
   turn: number;
   observation: SoloWalkerObservation;
-  observationSummary: string;
-  reasoning: string;
-  believedPosition: { x: number; y: number };
-  coordinateNote: string;
-  direction: Direction;
+  estimatedPosition: { x: number; y: number };
+  notes: string;
+  action: Direction;
   result: "moved" | "blocked" | null;
 };
 type AgentRequest = {
@@ -305,20 +303,16 @@ export async function POST(request: Request) {
     const result = await createStructuredResponse(
       apiKey,
       [
-        "You are the only agent inside Echo Maze.",
-        "You cannot see a map, your absolute coordinates, or any hidden state. You have no route tool and no notebook.",
-        "Your sole memory is the complete conversation from this run: prior observations, your prior reasoning summaries and decisions, and movement outcomes.",
-        "Maintain your own relative coordinate system in that conversation. The starting cell is (0,0); moving right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1.",
-        "A successful prior move changes your coordinate by exactly one. A blocked prior move leaves it unchanged. Recalculate your current believed coordinate from the history every turn.",
-        "Write one coordinate note for the current cell that records useful open directions, explored branches, dead ends, or a possible revisit. This note becomes part of the next turn's conversation.",
-        "The current observation shows open and blocked absolute directions plus straight line-of-sight corridors. A wall hides everything beyond it.",
-        "Use the conversation to build and revise a mental route: remember branches already attempted, recognize likely revisits from matching views and action history, and backtrack from dead ends.",
-        "Never claim certainty about a location or unseen geometry. Never invent coordinates.",
-        "If the exit is visible, choose the open direction whose sightline contains isExit=true.",
-        "Otherwise prefer an open branch you believe has not been explored; when necessary, deliberately backtrack.",
-        "Return a concise English observation summary and a concise, useful English reasoning summary that makes your memory strategy observable.",
-        "Write the coordinate note in English as well.",
-        "Choose exactly one direction from the currently open directions.",
+        "You are the Walker inside Echo Maze.",
+        "Your goal is to reach the exit.",
+        "You cannot see the complete maze, your absolute position, or any hidden state. You have no route-finding tool.",
+        "Each turn, you receive your current local observation, open and blocked absolute directions, straight line-of-sight information, the result of your previous action, and the complete conversation from the current run.",
+        "The starting cell is defined as relative position (0,0). A successful move right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1. A blocked move does not change your position.",
+        "Return exactly three fields.",
+        "estimated_position: Your current estimate of your relative position. This is your own estimate and may be wrong.",
+        "notes: Notes that will be included in later turns of this run. You may use this field in any way you find useful. Choose your own format and decide what is worth recording.",
+        "action: Choose exactly one of up, right, down, or left.",
+        "Explore the maze using your own strategy and reach the exit. Base your decisions only on the provided observations and conversation.",
       ].join(" "),
       {
         turn: payload.turn,
@@ -330,9 +324,7 @@ export async function POST(request: Request) {
         type: "object",
         additionalProperties: false,
         properties: {
-          observation_summary: { type: "string", minLength: 1, maxLength: 220 },
-          reasoning_summary: { type: "string", minLength: 1, maxLength: 360 },
-          believed_position: {
+          estimated_position: {
             type: "object",
             additionalProperties: false,
             properties: {
@@ -341,44 +333,32 @@ export async function POST(request: Request) {
             },
             required: ["x", "y"],
           },
-          coordinate_note: { type: "string", minLength: 1, maxLength: 280 },
-          direction: { type: "string", enum: DIRECTIONS },
+          notes: { type: "string", minLength: 1, maxLength: 280 },
+          action: { type: "string", enum: DIRECTIONS },
         },
-        required: ["observation_summary", "reasoning_summary", "believed_position", "coordinate_note", "direction"],
+        required: ["estimated_position", "notes", "action"],
       },
       900,
       "low",
     );
 
-    const observationSummary = typeof result.data.observation_summary === "string"
-      ? result.data.observation_summary.trim()
+    const notes = typeof result.data.notes === "string"
+      ? result.data.notes.trim()
       : "";
-    const reasoning = typeof result.data.reasoning_summary === "string"
-      ? result.data.reasoning_summary.trim()
-      : "";
-    const coordinateNote = typeof result.data.coordinate_note === "string"
-      ? result.data.coordinate_note.trim()
-      : "";
-    const believedPosition = result.data.believed_position && typeof result.data.believed_position === "object"
-      ? result.data.believed_position as { x?: unknown; y?: unknown }
+    const estimatedPosition = result.data.estimated_position && typeof result.data.estimated_position === "object"
+      ? result.data.estimated_position as { x?: unknown; y?: unknown }
       : null;
-    if (!observationSummary || !reasoning || !coordinateNote || !believedPosition
-      || !Number.isInteger(believedPosition.x) || !Number.isInteger(believedPosition.y)
-      || !isDirection(result.data.direction)) {
+    if (!notes || !estimatedPosition
+      || !Number.isInteger(estimatedPosition.x) || !Number.isInteger(estimatedPosition.y)
+      || !isDirection(result.data.action)) {
       throw new Error("Solo Walker returned an invalid decision.");
     }
-    if (!payload.observation.openDirections.includes(result.data.direction)) {
-      throw new Error("Solo Walker selected a direction that is visibly blocked.");
-    }
-
     return json({
       role: "solo_walker",
       model: MODEL,
-      observationSummary,
-      reasoning,
-      believedPosition: { x: believedPosition.x as number, y: believedPosition.y as number },
-      coordinateNote,
-      direction: result.data.direction,
+      estimatedPosition: { x: estimatedPosition.x as number, y: estimatedPosition.y as number },
+      notes,
+      action: result.data.action,
       meta: result.meta,
     });
   } catch (error) {
