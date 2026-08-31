@@ -13,6 +13,10 @@ const WALL_STEP = 0.12;
 const WALL_LEVELS = 11;
 const ICE = "#f0f7ff";
 const WALKER_HEIGHT = 0.34;
+const WALKER_COLOR = "#ff5c35";
+const WALKER_PARTICLE_COUNT = 420;
+const WALKER_PARTICLE_RADIUS = 0.3;
+const WALKER_GLYPH_COUNT = 18;
 const ENTRY_RISE_MS = 620;
 const START_HOLD_MS = 900;
 const MOVE_MS_PER_CELL = 560;
@@ -69,19 +73,20 @@ function createFallback(maze: Maze) {
         />
       ))}
       <circle cx={maze.start.c + 0.5} cy={maze.start.r + 0.5} r=".18" fill="currentColor" />
-      <circle cx={maze.exit.c + 0.5} cy={maze.exit.r + 0.5} r=".11" fill="currentColor" opacity=".56" />
+      <circle cx={maze.exit.c + 0.5} cy={maze.exit.r + 0.5} r=".2" fill="none" stroke="currentColor" strokeWidth=".055" />
+      <circle cx={maze.exit.c + 0.5} cy={maze.exit.r + 0.5} r=".07" fill="currentColor" opacity=".72" />
     </svg>
   );
 }
 
-function makeGlyphTexture(three: typeof import("three"), value: string, size = 64): Texture {
+function makeGlyphTexture(three: typeof import("three"), value: string, size = 64, fillStyle = ICE): Texture {
   const surface = document.createElement("canvas");
   surface.width = size;
   surface.height = size;
   const context = surface.getContext("2d");
   if (context) {
     context.clearRect(0, 0, size, size);
-    context.fillStyle = ICE;
+    context.fillStyle = fillStyle;
     const fontScale = value.length > 1 ? 0.28 : 0.62;
     context.font = `400 ${Math.round(size * fontScale)}px monospace`;
     context.textAlign = "center";
@@ -103,10 +108,11 @@ function addGlyph(
   z: number,
   scale = 0.18,
   opacity = 0.44,
+  color = ICE,
 ) {
   const material = new three.SpriteMaterial({
     map: texture,
-    color: ICE,
+    color,
     transparent: true,
     opacity,
     depthWrite: false,
@@ -253,12 +259,42 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         glyphTextures.set(value, texture);
         return texture;
       };
-      const floorMaterial = new three.MeshBasicMaterial({ color: 0x102a72, side: three.DoubleSide, depthWrite: true });
-      const floorGeometries: Array<InstanceType<typeof three.ShapeGeometry>> = [];
       const lineGeometries: Array<InstanceType<typeof three.BufferGeometry>> = [];
       const particleGeometries: Array<InstanceType<typeof three.BufferGeometry>> = [];
-      const exitGeometry = new three.CylinderGeometry(EXIT_RADIUS, EXIT_RADIUS * 0.92, 0.08, 40);
-      const exitMaterial = new three.MeshBasicMaterial({ color: 0xf0f7ff });
+      const exitRingGeometry = new three.RingGeometry(EXIT_RADIUS * 0.66, EXIT_RADIUS, 40);
+      const exitRingMaterial = new three.MeshBasicMaterial({
+        color: ICE,
+        transparent: true,
+        opacity: 0.88,
+        side: three.DoubleSide,
+        depthWrite: false,
+      });
+      const exitCoreGeometry = new three.RingGeometry(EXIT_RADIUS * 0.2, EXIT_RADIUS * 0.3, 32);
+      const exitCoreMaterial = new three.MeshBasicMaterial({
+        color: ICE,
+        transparent: true,
+        opacity: 0.68,
+        side: three.DoubleSide,
+        depthWrite: false,
+      });
+      const exitParticlePositions: number[] = [];
+      for (let index = 0; index < 48; index += 1) {
+        const angle = (index / 48) * Math.PI * 2;
+        for (const radius of [EXIT_RADIUS * 0.48, EXIT_RADIUS * 0.84]) {
+          exitParticlePositions.push(Math.cos(angle) * radius, 0.012, Math.sin(angle) * radius);
+        }
+      }
+      const exitParticleGeometry = new three.BufferGeometry();
+      exitParticleGeometry.setAttribute("position", new three.Float32BufferAttribute(exitParticlePositions, 3));
+      const exitParticleMaterial = new three.PointsMaterial({
+        color: ICE,
+        size: 0.045,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+        blending: three.NormalBlending,
+      });
 
       const buildMazeScene = (maze: Maze, mazeIndex: number) => {
         const group = new three.Group();
@@ -267,23 +303,6 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         const segments = getWallSegments(maze);
         const start = cellCenter(maze, maze.start);
         const exit = cellCenter(maze, maze.exit);
-
-        const floorExtent = size / 2;
-        const floorShape = new three.Shape();
-        floorShape.moveTo(-floorExtent, -floorExtent);
-        floorShape.lineTo(floorExtent, -floorExtent);
-        floorShape.lineTo(floorExtent, floorExtent);
-        floorShape.lineTo(-floorExtent, floorExtent);
-        floorShape.closePath();
-        const exitOpening = new three.Path();
-        exitOpening.absarc(exit.x, -exit.z, EXIT_RADIUS, 0, Math.PI * 2, false);
-        floorShape.holes.push(exitOpening);
-        const floorGeometry = new three.ShapeGeometry(floorShape);
-        floorGeometries.push(floorGeometry);
-        const floor = new three.Mesh(floorGeometry, floorMaterial);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.y = -0.035;
-        group.add(floor);
 
         for (const segment of segments) {
           const horizontal = Math.abs(segment.x2 - segment.x1) > Math.abs(segment.z2 - segment.z1);
@@ -363,9 +382,26 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         });
         group.add(glyphGroup);
 
-        const exitHole = new three.Mesh(exitGeometry, exitMaterial);
-        exitHole.position.set(exit.x, -0.075, exit.z);
-        group.add(exitHole);
+        const exitMarker = new three.Group();
+        const exitRing = new three.Mesh(exitRingGeometry, exitRingMaterial);
+        exitRing.rotation.x = -Math.PI / 2;
+        exitMarker.add(exitRing);
+        const exitCore = new three.Mesh(exitCoreGeometry, exitCoreMaterial);
+        exitCore.rotation.x = -Math.PI / 2;
+        exitMarker.add(exitCore);
+        exitMarker.add(new three.Points(exitParticleGeometry, exitParticleMaterial));
+        glyphMaterials.push(addGlyph(
+          three,
+          exitMarker,
+          textureFor("EXIT"),
+          0,
+          0.09,
+          0,
+          0.26,
+          0.9,
+        ));
+        exitMarker.position.set(exit.x, 0.02, exit.z);
+        group.add(exitMarker);
 
         const walkerPath = shortestPath(maze.cells, maze.start, maze.exit).map((point) => cellCenter(maze, point));
         const travelDuration = Math.max(0, walkerPath.length - 1) * MOVE_MS_PER_CELL;
@@ -405,22 +441,68 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       };
       schedulePreload(1);
 
-      const walkerGeometry = new three.SphereGeometry(0.28, 32, 24);
-      const walkerMaterial = new three.MeshStandardMaterial({
-        color: 0xff5c35,
-        emissive: 0x527ceb,
-        emissiveIntensity: 0.3,
-        metalness: 0.08,
-        roughness: 0.22,
+      const walkerParticlePositions: number[] = [];
+      for (let index = 0; index < WALKER_PARTICLE_COUNT; index += 1) {
+        const progress = (index + 0.5) / WALKER_PARTICLE_COUNT;
+        const y = 1 - progress * 2;
+        const radius = Math.sqrt(1 - y * y);
+        const angle = index * Math.PI * (3 - Math.sqrt(5));
+        const surfaceRadius = WALKER_PARTICLE_RADIUS * (0.94 + seededNoise(index + 900) * 0.08);
+        walkerParticlePositions.push(
+          Math.cos(angle) * radius * surfaceRadius,
+          y * surfaceRadius,
+          Math.sin(angle) * radius * surfaceRadius,
+        );
+      }
+      const walkerParticleGeometry = new three.BufferGeometry();
+      walkerParticleGeometry.setAttribute("position", new three.Float32BufferAttribute(walkerParticlePositions, 3));
+      const walkerParticleMaterial = new three.PointsMaterial({
+        color: WALKER_COLOR,
+        size: 0.055,
+        sizeAttenuation: true,
         transparent: true,
+        opacity: 0.96,
+        depthWrite: false,
+        blending: three.NormalBlending,
       });
-      const walkerBall = new three.Mesh(walkerGeometry, walkerMaterial);
-      walkerBall.position.set(firstMaze.start.x, WALKER_HEIGHT - EXIT_DROP_DISTANCE, firstMaze.start.z);
-      scene.add(new three.HemisphereLight(0xffffff, 0x0033e5, 2.2));
-      const walkerLight = new three.DirectionalLight(0xffffff, 2.4);
-      walkerLight.position.set(-3, 7, 4);
-      scene.add(walkerLight);
-      scene.add(walkerBall);
+      const walkerObject = new three.Group();
+      const walkerRollGroup = new three.Group();
+      const walkerParticles = new three.Points(walkerParticleGeometry, walkerParticleMaterial);
+      walkerRollGroup.add(walkerParticles);
+      const walkerGlyphGroup = new three.Group();
+      const walkerGlyphTextures = new Map<string, Texture>();
+      const walkerTextureFor = (value: string) => {
+        const existing = walkerGlyphTextures.get(value);
+        if (existing) return existing;
+        const texture = makeGlyphTexture(three, value, 64, WALKER_COLOR);
+        walkerGlyphTextures.set(value, texture);
+        glyphTextures.set(`walker-${value}`, texture);
+        return texture;
+      };
+      const walkerGlyphMaterials: Array<InstanceType<typeof three.SpriteMaterial>> = [];
+      for (let index = 0; index < WALKER_GLYPH_COUNT; index += 1) {
+        const progress = (index + 0.5) / WALKER_GLYPH_COUNT;
+        const y = 1 - progress * 2;
+        const radius = Math.sqrt(1 - y * y);
+        const angle = index * Math.PI * (3 - Math.sqrt(5)) + 0.4;
+        const glyphMaterial = addGlyph(
+          three,
+          walkerGlyphGroup,
+          walkerTextureFor(glyphs[(index * 3) % glyphs.length]),
+          Math.cos(angle) * radius * WALKER_PARTICLE_RADIUS * 1.02,
+          y * WALKER_PARTICLE_RADIUS * 1.02,
+          Math.sin(angle) * radius * WALKER_PARTICLE_RADIUS * 1.02,
+          0.1,
+          0.68,
+          "#ffffff",
+        );
+        walkerGlyphMaterials.push(glyphMaterial);
+        glyphMaterials.push(glyphMaterial);
+      }
+      walkerRollGroup.add(walkerGlyphGroup);
+      walkerObject.add(walkerRollGroup);
+      walkerObject.position.set(firstMaze.start.x, WALKER_HEIGHT, firstMaze.start.z);
+      scene.add(walkerObject);
 
       const atmospherePositions: number[] = [];
       for (let index = 0; index < 90; index += 1) {
@@ -461,6 +543,15 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       let reducedMotion = motionQuery.matches;
       let walkerAnimationStart: number | null = null;
       let activeMazeIndex = 0;
+      let walkerRollX = 0;
+      let walkerRollZ = 0;
+      let previousPathProgress: number | null = null;
+      const resetWalkerRoll = () => {
+        walkerRollX = 0;
+        walkerRollZ = 0;
+        previousPathProgress = null;
+        walkerRollGroup.rotation.set(0, 0, 0);
+      };
       controls.autoRotate = !reducedMotion;
       const onMotionChange = (event: MediaQueryListEvent) => {
         reducedMotion = event.matches;
@@ -468,8 +559,10 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         walkerAnimationStart = null;
         mazeScenes.forEach((item, index) => { item.group.visible = index === 0; });
         activeMazeIndex = 0;
-        walkerMaterial.opacity = 1;
-        walkerBall.position.set(firstMaze.start.x, WALKER_HEIGHT, firstMaze.start.z);
+        walkerParticleMaterial.opacity = 0.96;
+        walkerGlyphMaterials.forEach((material) => { material.opacity = 0.68; });
+        resetWalkerRoll();
+        walkerObject.position.set(firstMaze.start.x, WALKER_HEIGHT, firstMaze.start.z);
       };
       motionQuery.addEventListener("change", onMotionChange);
 
@@ -494,25 +587,50 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
             activeMazeIndex = nextMazeIndex;
             activeMaze = nextMaze;
             activeMaze.group.visible = true;
+            resetWalkerRoll();
             elapsed = time - walkerAnimationStart;
           }
           if (elapsed < ENTRY_RISE_MS) {
+            resetWalkerRoll();
             const entryProgress = elapsed / ENTRY_RISE_MS;
             const easedEntry = 1 - Math.pow(1 - entryProgress, 3);
-            walkerMaterial.opacity = easedEntry;
-            walkerBall.position.set(activeMaze.start.x, WALKER_HEIGHT - EXIT_DROP_DISTANCE * (1 - easedEntry), activeMaze.start.z);
+            walkerParticleMaterial.opacity = easedEntry * 0.96;
+            walkerGlyphMaterials.forEach((material) => { material.opacity = easedEntry * 0.68; });
+            walkerObject.position.set(activeMaze.start.x, WALKER_HEIGHT - EXIT_DROP_DISTANCE * (1 - easedEntry), activeMaze.start.z);
           } else if (elapsed < activeMaze.travelStart || activeMaze.walkerPath.length < 2) {
-            walkerMaterial.opacity = 1;
-            walkerBall.position.set(activeMaze.start.x, WALKER_HEIGHT, activeMaze.start.z);
+            resetWalkerRoll();
+            walkerParticleMaterial.opacity = 0.96;
+            walkerGlyphMaterials.forEach((material) => { material.opacity = 0.68; });
+            walkerObject.position.set(activeMaze.start.x, WALKER_HEIGHT, activeMaze.start.z);
           } else if (elapsed < activeMaze.dropStart) {
-            walkerMaterial.opacity = 1;
+            walkerParticleMaterial.opacity = 0.96;
+            walkerGlyphMaterials.forEach((material) => { material.opacity = 0.68; });
             const pathProgress = (elapsed - activeMaze.travelStart) / MOVE_MS_PER_CELL;
             const segmentIndex = Math.min(Math.floor(pathProgress), activeMaze.walkerPath.length - 2);
             const segmentProgress = pathProgress - segmentIndex;
             const easedProgress = segmentProgress * segmentProgress * (3 - 2 * segmentProgress);
             const from = activeMaze.walkerPath[segmentIndex];
             const to = activeMaze.walkerPath[segmentIndex + 1];
-            walkerBall.position.set(
+            if (previousPathProgress === null) previousPathProgress = pathProgress;
+            let remainingProgress = Math.max(0, pathProgress - previousPathProgress);
+            let rollProgress = previousPathProgress;
+            while (remainingProgress > 0) {
+              const rollSegmentIndex = Math.min(Math.floor(rollProgress), activeMaze.walkerPath.length - 2);
+              const segmentEnd = Math.min(rollSegmentIndex + 1, activeMaze.walkerPath.length - 1);
+              const segmentAdvance = Math.min(remainingProgress, segmentEnd - rollProgress);
+              const rollFrom = activeMaze.walkerPath[rollSegmentIndex];
+              const rollTo = activeMaze.walkerPath[rollSegmentIndex + 1];
+              const directionX = rollTo.x - rollFrom.x;
+              const directionZ = rollTo.z - rollFrom.z;
+              walkerRollZ -= (directionX * segmentAdvance) / WALKER_PARTICLE_RADIUS;
+              walkerRollX += (directionZ * segmentAdvance) / WALKER_PARTICLE_RADIUS;
+              rollProgress += segmentAdvance;
+              remainingProgress -= segmentAdvance;
+            }
+            previousPathProgress = pathProgress;
+            walkerRollGroup.rotation.x = walkerRollX;
+            walkerRollGroup.rotation.z = walkerRollZ;
+            walkerObject.position.set(
               from.x + (to.x - from.x) * easedProgress,
               WALKER_HEIGHT + Math.sin(segmentProgress * Math.PI) * 0.045,
               from.z + (to.z - from.z) * easedProgress,
@@ -520,8 +638,10 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
           } else {
             const dropProgress = Math.min(1, (elapsed - activeMaze.dropStart) / EXIT_DROP_MS);
             const easedDrop = dropProgress * dropProgress;
-            walkerMaterial.opacity = 1 - Math.max(0, (dropProgress - 0.55) / 0.45);
-            walkerBall.position.set(activeMaze.exit.x, WALKER_HEIGHT - easedDrop * EXIT_DROP_DISTANCE, activeMaze.exit.z);
+            const walkerOpacity = 1 - Math.max(0, (dropProgress - 0.55) / 0.45);
+            walkerParticleMaterial.opacity = walkerOpacity * 0.96;
+            walkerGlyphMaterials.forEach((material) => { material.opacity = walkerOpacity * 0.68; });
+            walkerObject.position.set(activeMaze.exit.x, WALKER_HEIGHT - easedDrop * EXIT_DROP_DISTANCE, activeMaze.exit.z);
           }
           const pulse = Math.sin(time * 0.0015) * 0.08;
           particleMaterial.opacity = 0.75 + pulse;
@@ -549,15 +669,17 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         lineMaterial.dispose();
         particleGeometries.forEach((geometry) => geometry.dispose());
         particleMaterial.dispose();
-        floorGeometries.forEach((geometry) => geometry.dispose());
-        floorMaterial.dispose();
         grid.geometry.dispose();
         gridMaterials.forEach((material) => material.dispose());
         glyphMaterials.forEach((material) => material.dispose());
-        walkerGeometry.dispose();
-        walkerMaterial.dispose();
-        exitGeometry.dispose();
-        exitMaterial.dispose();
+        walkerParticleGeometry.dispose();
+        walkerParticleMaterial.dispose();
+        exitRingGeometry.dispose();
+        exitRingMaterial.dispose();
+        exitCoreGeometry.dispose();
+        exitCoreMaterial.dispose();
+        exitParticleGeometry.dispose();
+        exitParticleMaterial.dispose();
         [...glyphTextures.values()].forEach((texture) => texture.dispose());
         atmosphereGeometry.dispose();
         atmosphereMaterial.dispose();
