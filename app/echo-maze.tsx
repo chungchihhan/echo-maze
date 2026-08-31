@@ -1,22 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   DIRECTIONS,
   MIN_ROUTE_LENGTH,
   canMove,
   generateMaze,
   getNeighbor,
-  pointKey,
   samePoint,
   seededRandom,
-  visibleWalkerPoints,
   walkerObservation as observeWalkerCell,
 } from "../lib/maze/index.js";
-import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
+import type { DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
 import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } from "./demo-replay";
 import { HeroMaze } from "./hero-maze";
+import { MazeSightLayer } from "./maze-sight";
+import { MazeStructure } from "./maze-structure";
 import { GridWalkerMarker } from "./walker-marker";
 
 // Environment semantics (maze generation, movement, corridor line-of-sight)
@@ -115,6 +115,12 @@ const HERO_MAZES = [
 ];
 const LANDING_STAGE_HOLD_MS = [2200, 1200, 0, 1800, 900] as const;
 const LANDING_STREAM_CHARACTER_MS = 22;
+const LANDING_READOUT_DELAYS_MS = {
+  turn: 0,
+  lastAction: 200,
+  moves: 400,
+  wallHits: 600,
+} as const;
 
 function subscribeToReducedMotion(onChange: () => void) {
   const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -330,17 +336,6 @@ function makeInitialGame(stable = false): GameState {
   };
 }
 
-function wallStyle(cell: Cell): CSSProperties {
-  // Wall stroke derives from the Factory pale-stone token (--wall-stroke in globals.css).
-  const wallColor = "var(--wall-stroke)";
-  return {
-    borderTopColor: cell.walls.up ? wallColor : "transparent",
-    borderRightColor: cell.walls.right ? wallColor : "transparent",
-    borderBottomColor: cell.walls.down ? wallColor : "transparent",
-    borderLeftColor: cell.walls.left ? wallColor : "transparent",
-  };
-}
-
 function StatusDot({ status }: { status: "live" | "idle" | "success" }) {
   return <span className={`status-dot status-${status}`} aria-hidden="true" />;
 }
@@ -480,43 +475,26 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
 }
 
 function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
-  const visible = visibleWalkerPoints(game.maze.cells, game.position);
   return (
-    <div className={`map-layer walker-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-      <div className="local-grid" aria-label="Walker line-of-sight view along open corridors">
-        {game.maze.cells.flat().map((cell) => {
-          const point = { r: cell.r, c: cell.c };
-          if (!visible.has(pointKey(point))) return <div className="local-cell local-hidden" key={pointKey(point)} aria-label="Area hidden by walls" />;
-          const isExit = samePoint(point, game.maze.exit);
-          return (
-            <div className={`local-cell ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isExit ? <span className="local-exit-mark">EXIT</span> : null}
-            </div>
-          );
-        })}
-        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
+    <>
+      <div className={`map-layer walker-light-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
+        {!hidden ? <MazeSightLayer maze={game.maze} position={game.position} /> : null}
       </div>
-    </div>
+      <div className={`map-layer walker-structure-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
+        <MazeStructure maze={game.maze} ariaLabel="Unlit maze with Walker light" className="walker-light-grid" showExit showWallLight position={game.position}>
+          <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
+        </MazeStructure>
+      </div>
+    </>
   );
 }
 
 function SpectatorMap({ game, hidden }: { game: GameState; hidden: boolean }) {
   return (
     <div className={`map-layer spectator-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-      <div className="maze-grid full-maze" aria-label="Complete maze spectator view">
-        {game.maze.cells.flat().map((cell) => {
-          const point = { r: cell.r, c: cell.c };
-          const isStart = samePoint(point, game.maze.start);
-          const isExit = samePoint(point, game.maze.exit);
-          return (
-            <div className={`maze-cell ${isStart ? "cell-start" : ""} ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isStart ? <span className="start-mark">START</span> : null}
-              {isExit ? <span className="exit-mark">EXIT</span> : null}
-            </div>
-          );
-        })}
+      <MazeStructure maze={game.maze} ariaLabel="Complete maze spectator view" showStart showExit>
         <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
-      </div>
+      </MazeStructure>
     </div>
   );
 }
@@ -525,15 +503,15 @@ function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameSta
   return (
     <div className="map-viewport">
       <div className="map-stage-shell">
-        <div className="map-stage">
+        <div className="map-stage maze-grid-stage">
           <WalkerView game={game} hidden={showFullMap} />
           <SpectatorMap game={game} hidden={!showFullMap} />
         </div>
       </div>
       <div className="map-legend-slot" aria-hidden="true">
         <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
-          <span><i className="legend-swatch swatch-visible" />Visible corridor</span>
-          <span><i className="legend-swatch swatch-unknown" />Hidden by walls</span>
+          <span><i className="legend-swatch swatch-light" />Walker light</span>
+          <span><i className="legend-swatch swatch-structure" />Unlit maze</span>
         </div>
         <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
           <span><i className="legend-swatch swatch-walker" />Walker&apos;s actual position</span>
@@ -544,7 +522,7 @@ function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameSta
         <p className="map-mode-caption">
           {showFullMap
             ? "Spectator mode: the complete map and actual position are never shown to Walker."
-            : "Walls block sight; Walker has no absolute coordinates or complete map."}
+            : "The maze stays unlit; Walker light follows wall-blocked sightlines."}
         </p>
       ) : null}
     </div>
@@ -624,10 +602,10 @@ function ThoughtCard({
   );
 }
 
-function TextLoopValue({ value }: { value: string }) {
+function TextLoopValue({ value, delayMs = 0, animationKey }: { value: string; delayMs?: number; animationKey?: string | number }) {
   return (
     <span className="text-loop-value" aria-live="polite">
-      <span className="text-loop-value-item" key={value}>{value}</span>
+      <span className="text-loop-value-item" key={`${animationKey ?? value}-${value}`} style={delayMs ? { animationDelay: `${delayMs}ms` } : undefined}>{value}</span>
     </span>
   );
 }
@@ -686,7 +664,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
         <div className="agent-name-wrap"><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div>
         <div className="card-head-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
-            {showFullMap ? "Show Walker view" : "Show full map"}
+            {showFullMap ? "Show Walker light" : "Reveal full maze"}
           </button>
           <span className={`visibility-tag ${showFullMap ? "spectator-tag" : "local-tag"}`}>{showFullMap ? "SPECTATOR" : "LINE OF SIGHT"}</span>
         </div>
@@ -699,7 +677,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
           <MazeViewport game={game} showFullMap={showFullMap} showCaption={showMapCaption} />
           <div className="action-readout">
             <div><span className="readout-label">LAST ACTION</span><strong><TextLoopValue value={game.lastAction ? `Move ${DIRECTIONS.find((item) => item.key === game.lastAction)?.label}` : "—"} /></strong></div>
-            <div><span className="readout-label">MODEL ESTIMATE</span><strong className={!lastThought || coordinateIsConsistent ? "match" : "drift"}><TextLoopValue value={lastThought ? `(${reportedPosition.x}, ${reportedPosition.y})` : "(0, 0)"} /></strong></div>
+            <div><span className="readout-label">COORDINATE</span><strong className={!lastThought || coordinateIsConsistent ? "match" : "drift"}><TextLoopValue value={lastThought ? `(${reportedPosition.x}, ${reportedPosition.y})` : "(0, 0)"} /></strong></div>
             <div><span className="readout-label">STEPS TAKEN</span><strong><TextLoopValue value={String(game.turn).padStart(2, "0")} /></strong></div>
           </div>
           <div className="coordinate-readout">
@@ -776,7 +754,7 @@ function LandingReplayStage({
         </div>
         <div className="landing-replay-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
-            {showFullMap ? "Show Walker view" : "Show full map"}
+            {showFullMap ? "Show Walker light" : "Reveal full maze"}
           </button>
         </div>
       </header>
@@ -788,19 +766,19 @@ function LandingReplayStage({
 
         <div className="landing-output-panel">
           <div className="landing-output-row landing-turn-row landing-context-row">
-            <div><span>TURN</span><strong>{String(thought.turn).padStart(2, "0")}</strong></div>
-            <div><span>LAST ACTION</span><strong>{lastActionLabel ? `MOVE ${lastActionLabel.toUpperCase()}` : "—"}</strong></div>
+            <div><span>TURN</span><strong><TextLoopValue value={String(thought.turn).padStart(2, "0")} animationKey={thought.turn} delayMs={LANDING_READOUT_DELAYS_MS.turn} /></strong></div>
+            <div><span>LAST ACTION</span><strong><TextLoopValue value={lastActionLabel ? `MOVE ${lastActionLabel.toUpperCase()}` : "—"} animationKey={thought.turn} delayMs={LANDING_READOUT_DELAYS_MS.lastAction} /></strong></div>
           </div>
           <div className="landing-output-row landing-metrics-row landing-context-row">
-            <div><span>MOVES</span><strong>{String(Math.max(0, decisionGame.turn - decisionGame.collisions)).padStart(2, "0")}</strong></div>
-            <div><span>WALL HITS</span><strong>{String(decisionGame.collisions).padStart(2, "0")}</strong></div>
+            <div><span>MOVES</span><strong><TextLoopValue value={String(Math.max(0, decisionGame.turn - decisionGame.collisions)).padStart(2, "0")} animationKey={thought.turn} delayMs={LANDING_READOUT_DELAYS_MS.moves} /></strong></div>
+            <div><span>WALL HITS</span><strong><TextLoopValue value={String(decisionGame.collisions).padStart(2, "0")} animationKey={thought.turn} delayMs={LANDING_READOUT_DELAYS_MS.wallHits} /></strong></div>
           </div>
           <div className={`landing-exploring ${stage === 0 ? "is-active" : "is-complete"}`}>
             <span>Exploring the maze…</span>
           </div>
           <div className={`landing-model-estimate ${landingStageClass(stage, 1)}`}>
             <span>MODEL ESTIMATE</span>
-            <strong>{stage >= 1 ? `(${reportedPosition.x}, ${reportedPosition.y})` : "—"}</strong>
+            <strong><TextLoopValue value={stage >= 1 ? `(${reportedPosition.x}, ${reportedPosition.y})` : "—"} /></strong>
           </div>
           <div className={`landing-agent-output ${landingStageClass(stage, 2)}`}>
             <span>AGENT OUTPUT</span>
@@ -808,7 +786,7 @@ function LandingReplayStage({
           </div>
           <div className={`landing-model-action ${landingStageClass(stage, 3)}`}>
             <span>ACTION</span>
-            <strong>{stage >= 3 ? `MOVE ${actionLabel.toUpperCase()}` : "—"}</strong>
+            <strong><TextLoopValue value={stage >= 3 ? `MOVE ${actionLabel.toUpperCase()}` : "—"} /></strong>
           </div>
         </div>
       </div>

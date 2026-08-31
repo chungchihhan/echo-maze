@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { DIRECTIONS, pointKey, samePoint, visibleWalkerPoints } from "../lib/maze/index.js";
-import type { Cell, DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
+import { DIRECTIONS } from "../lib/maze/index.js";
+import type { DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
 import { GridWalkerMarker, WalkerMarker } from "./walker-marker";
+import { MazeSightLayer } from "./maze-sight";
+import { MazeStructure } from "./maze-structure";
 
 type RelativePoint = { x: number; y: number };
 type ObservationDTO = {
@@ -295,58 +297,31 @@ async function fetchReplay(runId: string, signal?: AbortSignal, allowApiFallback
   return response.json() as Promise<ReplayDetail>;
 }
 
-function wallStyle(cell: Cell): CSSProperties {
-  const wallColor = "rgba(147, 179, 190, 0.72)";
-  return {
-    borderTopColor: cell.walls.up ? wallColor : "transparent",
-    borderRightColor: cell.walls.right ? wallColor : "transparent",
-    borderBottomColor: cell.walls.down ? wallColor : "transparent",
-    borderLeftColor: cell.walls.left ? wallColor : "transparent",
-  };
-}
-
 function PanelLabel({ children }: { children: ReactNode }) {
   return <span className="panel-label">{children}</span>;
 }
 
 function WalkerView({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
-  const visible = visibleWalkerPoints(game.maze.cells, game.position);
   return (
-    <div className={`map-layer walker-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-      <div className="local-grid" aria-label="Walker line-of-sight view along open corridors">
-        {game.maze.cells.flat().map((cell) => {
-          const point = { r: cell.r, c: cell.c };
-          if (!visible.has(pointKey(point))) return <div className="local-cell local-hidden" key={pointKey(point)} aria-label="Area hidden by walls" />;
-          const isExit = samePoint(point, game.maze.exit);
-          return (
-            <div className={`local-cell ${isExit ? "local-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isExit ? <span className="local-exit-mark">EXIT</span> : null}
-            </div>
-          );
-        })}
-        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
+    <>
+      <div className={`map-layer walker-light-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
+        {!hidden ? <MazeSightLayer maze={game.maze} position={game.position} /> : null}
       </div>
-    </div>
+      <div className={`map-layer walker-structure-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
+        <MazeStructure maze={game.maze} ariaLabel="Unlit maze with Walker light" className="walker-light-grid" showExit showWallLight position={game.position}>
+          <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
+        </MazeStructure>
+      </div>
+    </>
   );
 }
 
 function SpectatorMap({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
   return (
     <div className={`map-layer spectator-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-      <div className="maze-grid full-maze" aria-label="Complete maze spectator view">
-        {game.maze.cells.flat().map((cell) => {
-          const point = { r: cell.r, c: cell.c };
-          const isStart = samePoint(point, game.maze.start);
-          const isExit = samePoint(point, game.maze.exit);
-          return (
-            <div className={`maze-cell ${isStart ? "cell-start" : ""} ${isExit ? "cell-exit" : ""}`} key={pointKey(point)} style={wallStyle(cell)}>
-              {isStart ? <span className="start-mark">START</span> : null}
-              {isExit ? <span className="exit-mark">EXIT</span> : null}
-            </div>
-          );
-        })}
+      <MazeStructure maze={game.maze} ariaLabel="Complete maze spectator view" showStart showExit>
         <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
-      </div>
+      </MazeStructure>
     </div>
   );
 }
@@ -354,14 +329,14 @@ function SpectatorMap({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
 function MazeViewport({ game, showFullMap }: { game: ReplayGame; showFullMap: boolean }) {
   return (
     <div className="map-viewport">
-      <div className="map-stage">
+      <div className="map-stage maze-grid-stage">
         <WalkerView game={game} hidden={showFullMap} />
         <SpectatorMap game={game} hidden={!showFullMap} />
       </div>
       <div className="map-legend-slot" aria-hidden="true">
         <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
-          <span><i className="legend-swatch swatch-visible" />Visible corridor</span>
-          <span><i className="legend-swatch swatch-unknown" />Hidden by walls</span>
+          <span><i className="legend-swatch swatch-light" />Walker light</span>
+          <span><i className="legend-swatch swatch-structure" />Unlit maze</span>
         </div>
         <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
           <span><i className="legend-swatch swatch-walker" />Walker&apos;s actual position</span>
@@ -371,7 +346,7 @@ function MazeViewport({ game, showFullMap }: { game: ReplayGame; showFullMap: bo
       <p className="map-mode-caption">
         {showFullMap
           ? "Spectator mode: the complete map and actual position are never shown to Walker."
-          : "Walls block sight; Walker has no absolute coordinates or complete map."}
+          : "The maze stays unlit; Walker light follows wall-blocked sightlines."}
       </p>
     </div>
   );
@@ -494,7 +469,7 @@ function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMa
         <div className="observation-actions">
           {showReplayLink ? <Link className="button open-replay-button" href={`/replays/${encodeURIComponent(detail.run.id)}`}>Open replay <span>↗</span></Link> : null}
           <button className="button view-toggle public-map-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleMap}>
-            {showFullMap ? "Show Walker view" : "Show full map"}
+            {showFullMap ? "Show Walker light" : "Reveal full maze"}
           </button>
         </div>
       </div>
