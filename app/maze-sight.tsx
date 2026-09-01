@@ -1,203 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Maze, Point } from "../lib/maze/types.js";
 import { wallSegments, type WallSegment } from "./maze-structure";
 
-type SightParams = {
-  gridSize: number;
-  intensity: number;
-  walkerCell: readonly [number, number];
-};
+type Vector = { x: number; y: number };
+type VisibilityPoint = Vector & { angle: number };
 
-const SIGHT_SHADER = /* wgsl */ `
-struct Params {
-  gridSize: f32,
-  intensity: f32,
-  walkerCell: vec2f,
-};
-
-@group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> cellWalls: array<f32>;
-@group(0) @binding(2) var<storage, read> bounceWalls: array<vec4f>;
-
-const WALL_UP: u32 = 1u;
-const WALL_RIGHT: u32 = 2u;
-const WALL_DOWN: u32 = 4u;
-const WALL_LEFT: u32 = 8u;
-
-fn cellIsInside(cell: vec2i) -> bool {
-  let size = i32(params.gridSize);
-  return cell.x >= 0 && cell.y >= 0 && cell.x < size && cell.y < size;
-}
-
-fn cellWallMask(cell: vec2i) -> u32 {
-  if (!cellIsInside(cell)) {
-    return WALL_UP | WALL_RIGHT | WALL_DOWN | WALL_LEFT;
-  }
-  let size = i32(params.gridSize);
-  return u32(cellWalls[u32(cell.y * size + cell.x)]);
-}
-
-fn rayVisibility(origin: vec2f, destinationPoint: vec2f) -> f32 {
-  let destination = clamp(destinationPoint, vec2f(0.0005), vec2f(params.gridSize - 0.0005));
-  let ray = destination - origin;
-  let rayLength = length(ray);
-  if (rayLength < 0.0001) {
-    return 1.0;
-  }
-
-  let direction = ray / rayLength;
-  var cell = vec2i(i32(floor(origin.x)), i32(floor(origin.y)));
-  let endCell = vec2i(i32(floor(destination.x)), i32(floor(destination.y)));
-  let stepX: i32 = select(-1, 1, direction.x >= 0.0);
-  let stepY: i32 = select(-1, 1, direction.y >= 0.0);
-  var tDeltaX = 10000.0;
-  var tDeltaY = 10000.0;
-  var tMaxX = 10000.0;
-  var tMaxY = 10000.0;
-
-  if (abs(direction.x) > 0.0001) {
-    let nextBoundaryX = select(f32(cell.x), f32(cell.x + 1), stepX > 0);
-    tDeltaX = abs(1.0 / direction.x);
-    tMaxX = max((nextBoundaryX - origin.x) / direction.x, 0.0);
-  }
-  if (abs(direction.y) > 0.0001) {
-    let nextBoundaryY = select(f32(cell.y), f32(cell.y + 1), stepY > 0);
-    tDeltaY = abs(1.0 / direction.y);
-    tMaxY = max((nextBoundaryY - origin.y) / direction.y, 0.0);
-  }
-
-  // A 9x9 maze needs at most 18 crossings. The fixed upper bound keeps the
-  // shader valid for slightly larger mazes without scanning every wall.
-  for (var iteration = 0u; iteration < 32u; iteration = iteration + 1u) {
-    if (cell.x == endCell.x && cell.y == endCell.y) {
-      return 1.0;
-    }
-
-    let mask = cellWallMask(cell);
-    let wallX = select(WALL_LEFT, WALL_RIGHT, stepX > 0);
-    let wallY = select(WALL_UP, WALL_DOWN, stepY > 0);
-
-    if (abs(tMaxX - tMaxY) < 0.0001) {
-      if ((mask & wallX) != 0u || (mask & wallY) != 0u) {
-        return 0.0;
-      }
-      cell = cell + vec2i(stepX, stepY);
-      tMaxX = tMaxX + tDeltaX;
-      tMaxY = tMaxY + tDeltaY;
-    } else if (tMaxX < tMaxY) {
-      if ((mask & wallX) != 0u) {
-        return 0.0;
-      }
-      cell = cell + vec2i(stepX, 0);
-      tMaxX = tMaxX + tDeltaX;
-    } else {
-      if ((mask & wallY) != 0u) {
-        return 0.0;
-      }
-      cell = cell + vec2i(0, stepY);
-      tMaxY = tMaxY + tDeltaY;
-    }
-
-    if (!cellIsInside(cell)) {
-      return 0.0;
-    }
-  }
-  return 0.0;
-}
-
-fn normalizeOrZero(value: vec2f) -> vec2f {
-  let valueLength = length(value);
-  if (valueLength < 0.0001) {
-    return vec2f(0.0, 0.0);
-  }
-  return value / valueLength;
-}
-
-fn bounceRadiance(worldPosition: vec2f, walkerPosition: vec2f, wall: vec4f) -> f32 {
-  let wallEdge = wall.zw - wall.xy;
-  if (length(wallEdge) < 0.0001) {
-    return 0.0;
-  }
-
-  let wallMidpoint = (wall.xy + wall.zw) * 0.5;
-  let walkerToWall = wallMidpoint - walkerPosition;
-  let sourceDistance = length(walkerToWall);
-  if (sourceDistance < 0.0001) {
-    return 0.0;
-  }
-
-  // Orient the wall normal toward Walker so the diffuse lobe stays on the
-  // illuminated side instead of leaking through the wall.
-  let edgeDirection = normalizeOrZero(wallEdge);
-  var wallNormal = vec2f(-edgeDirection.y, edgeDirection.x);
-  let wallToWalker = normalizeOrZero(walkerPosition - wallMidpoint);
-  if (dot(wallNormal, wallToWalker) < 0.0) {
-    wallNormal = -wallNormal;
-  }
-
-  let incomingDirection = normalizeOrZero(walkerToWall);
-  let reflectionDirection = normalizeOrZero(incomingDirection - 2.0 * dot(incomingDirection, wallNormal) * wallNormal);
-  let wallToFragment = worldPosition - wallMidpoint;
-  let fragmentDistance = length(wallToFragment);
-  if (fragmentDistance < 0.0001) {
-    return 0.0;
-  }
-
-  let fragmentDirection = normalizeOrZero(wallToFragment);
-  let diffuse = max(dot(wallNormal, fragmentDirection), 0.0);
-  let reflection = pow(max(dot(reflectionDirection, fragmentDirection), 0.0), 6.0);
-  let sourceFalloff = 1.0 / (1.0 + 0.20 * sourceDistance + 0.10 * sourceDistance * sourceDistance);
-  let bounceFalloff = 1.0 / (1.0 + 0.32 * fragmentDistance + 0.18 * fragmentDistance * fragmentDistance);
-
-  // A broad Lambertian wash plus a tighter specular streak gives the visible
-  // maze a subtle one-bounce response without turning the hidden space into a map.
-  return sourceFalloff * bounceFalloff * (0.72 * diffuse + 0.42 * reflection);
-}
-
-@fragment
-fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let floorColor = vec3f(0.0, 0.0, 0.0);
-  let beamColor = vec3f(0.03, 0.14, 0.52);
-  let lightColor = vec3f(0.92, 0.97, 1.0);
-  let bounceColor = vec3f(0.16, 0.33, 0.86);
-  let worldPosition = uv * params.gridSize;
-  let walkerPosition = params.walkerCell + vec2f(0.5, 0.5);
-  let delta = worldPosition - walkerPosition;
-  let distanceFromWalker = length(delta);
-
-  // Five points across a small physical emitter create a distance-dependent
-  // penumbra. Every sample still traverses the maze grid and stops at walls.
-  let sourceRadius = 0.075;
-  let visibility = 0.36 * rayVisibility(walkerPosition, worldPosition)
-    + 0.16 * rayVisibility(walkerPosition + vec2f(sourceRadius, sourceRadius * 0.24), worldPosition)
-    + 0.16 * rayVisibility(walkerPosition + vec2f(-sourceRadius * 0.62, sourceRadius * 0.78), worldPosition)
-    + 0.16 * rayVisibility(walkerPosition + vec2f(-sourceRadius * 0.82, -sourceRadius * 0.48), worldPosition)
-    + 0.16 * rayVisibility(walkerPosition + vec2f(sourceRadius * 0.45, -sourceRadius), worldPosition);
-  let softVisibility = smoothstep(0.0, 1.0, visibility);
-  let falloff = 1.0 / (1.0 + 0.16 * distanceFromWalker + 0.09 * distanceFromWalker * distanceFromWalker);
-  let directLight = clamp(softVisibility * falloff * params.intensity, 0.0, 0.94);
-
-  var bounceEnergy = 0.0;
-  for (var bounceIndex = 0u; bounceIndex < arrayLength(&bounceWalls); bounceIndex = bounceIndex + 1u) {
-    bounceEnergy = bounceEnergy + bounceRadiance(worldPosition, walkerPosition, bounceWalls[bounceIndex]);
-  }
-  // Indirect light is also clipped by the same soft visibility mask. This is
-  // important: a visible wall may reflect light, but it cannot illuminate a
-  // fragment that is fully behind another wall.
-  let bounceMask = softVisibility * softVisibility;
-  let bounceLight = clamp(bounceEnergy * 0.045 * params.intensity * bounceMask, 0.0, 0.42);
-
-  let colorMix = clamp(exp(-distanceFromWalker * 0.52), 0.0, 1.0);
-  let litColor = mix(beamColor, lightColor, colorMix);
-  return vec4f(clamp(floorColor + litColor * directLight + bounceColor * bounceLight, vec3f(0.0), vec3f(1.0)), 1.0);
-}
-`;
-
-const MAX_BOUNCE_WALLS = 32;
+const CORNER_EPSILON = 0.00008;
+const GEOMETRY_EPSILON = 0.000001;
 const LIGHT_TRANSITION_MS = 1_100;
-const WALL_BITS = { up: 1, right: 2, down: 4, left: 8 } as const;
+
+function svgId(value: string) {
+  return value.replaceAll(":", "");
+}
 
 function cubicBezierCoordinate(t: number, control1: number, control2: number) {
   const inverse = 1 - t;
@@ -205,9 +21,6 @@ function cubicBezierCoordinate(t: number, control1: number, control2: number) {
 }
 
 function walkerTransitionEasing(progress: number) {
-  // Match the Walker marker's cubic-bezier(.22, 1, .36, 1) without adding a
-  // motion dependency. Binary subdivision is stable and runs only while the
-  // one-second light transition is active.
   let lower = 0;
   let upper = 1;
   let curveTime = progress;
@@ -219,281 +32,233 @@ function walkerTransitionEasing(progress: number) {
   return cubicBezierCoordinate(curveTime, 1, 1);
 }
 
-function makeCellWallData(maze: Maze) {
-  const size = maze.cells.length;
-  // Keep storage data as floats and cast in WGSL. This avoids integer-storage
-  // layout differences across WebGPU implementations while preserving the
-  // compact wall bitmask used by the DDA traversal.
-  const data = new Float32Array(size * size);
+function raySegmentIntersection(origin: Vector, angle: number, wall: WallSegment) {
+  const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+  const wallVector = { x: wall.x2 - wall.x1, y: wall.y2 - wall.y1 };
+  const denominator = direction.x * wallVector.y - direction.y * wallVector.x;
+  if (Math.abs(denominator) < 0.000001) return null;
 
-  for (const row of maze.cells) {
-    for (const cell of row) {
-      let mask = 0;
-      if (cell.walls.up) mask |= WALL_BITS.up;
-      if (cell.walls.right) mask |= WALL_BITS.right;
-      if (cell.walls.down) mask |= WALL_BITS.down;
-      if (cell.walls.left) mask |= WALL_BITS.left;
-      data[cell.r * size + cell.c] = mask;
-    }
-  }
-  return data;
-}
+  const offset = { x: wall.x1 - origin.x, y: wall.y1 - origin.y };
+  const rayDistance = (offset.x * wallVector.y - offset.y * wallVector.x) / denominator;
+  const wallDistance = (offset.x * direction.y - offset.y * direction.x) / denominator;
+  if (rayDistance < 0 || wallDistance < -0.000001 || wallDistance > 1.000001) return null;
 
-function cross2(a: readonly [number, number], b: readonly [number, number]) {
-  return a[0] * b[1] - a[1] * b[0];
-}
-
-function rayHitsWall(origin: readonly [number, number], destination: readonly [number, number], wall: WallSegment) {
-  const ray: [number, number] = [destination[0] - origin[0], destination[1] - origin[1]];
-  const wallVector: [number, number] = [wall.x2 - wall.x1, wall.y2 - wall.y1];
-  const denominator = cross2(ray, wallVector);
-  if (Math.abs(denominator) < 0.0001) return false;
-
-  const offset: [number, number] = [wall.x1 - origin[0], wall.y1 - origin[1]];
-  const rayDistance = cross2(offset, wallVector) / denominator;
-  const wallDistance = cross2(offset, ray) / denominator;
-  return rayDistance > 0.002 && rayDistance < 0.998 && wallDistance > -0.002 && wallDistance < 1.002;
-}
-
-function makeBounceWallData(maze: Maze, position: Point) {
-  const walkerPosition: [number, number] = [position.c + 0.5, position.r + 0.5];
-  const walls = wallSegments(maze);
-  const data = new Float32Array(MAX_BOUNCE_WALLS * 4);
-
-  // Reflections only need the nearest visible surfaces. Sorting before the
-  // occlusion test avoids the old all-walls-by-all-walls pass on every move.
-  const nearestVisibleWalls: WallSegment[] = [];
-  const nearestFirst = walls
-    .map((wall, wallIndex) => ({ wall, wallIndex }))
-    .sort((a, b) => {
-      const aWall = a.wall;
-      const bWall = b.wall;
-      const aX = (aWall.x1 + aWall.x2) * 0.5 - walkerPosition[0];
-      const aY = (aWall.y1 + aWall.y2) * 0.5 - walkerPosition[1];
-      const bX = (bWall.x1 + bWall.x2) * 0.5 - walkerPosition[0];
-      const bY = (bWall.y1 + bWall.y2) * 0.5 - walkerPosition[1];
-      return aX * aX + aY * aY - (bX * bX + bY * bY);
-    });
-
-  for (const { wall, wallIndex } of nearestFirst) {
-    const midpoint: [number, number] = [(wall.x1 + wall.x2) * 0.5, (wall.y1 + wall.y2) * 0.5];
-    const isOccluded = walls.some(
-      (candidate, candidateIndex) => candidateIndex !== wallIndex && rayHitsWall(walkerPosition, midpoint, candidate),
-    );
-    if (!isOccluded) nearestVisibleWalls.push(wall);
-    if (nearestVisibleWalls.length === MAX_BOUNCE_WALLS) break;
-  }
-
-  nearestVisibleWalls.forEach((wall, index) => {
-    data.set([wall.x1, wall.y1, wall.x2, wall.y2], index * 4);
-  });
-  return data;
-}
-
-function makeSightParams(maze: Maze, position: Point): SightParams {
   return {
-    gridSize: maze.cells.length,
-    intensity: 1,
-    walkerCell: [position.c, position.r],
+    x: origin.x + direction.x * rayDistance,
+    y: origin.y + direction.y * rayDistance,
+    distance: rayDistance,
   };
 }
 
-export function MazeSightLayer({ maze, position }: { maze: Maze; position: Point }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const cellWallData = useMemo(() => makeCellWallData(maze), [maze]);
-  const sightParams = useMemo(() => makeSightParams(maze, position), [maze, position]);
-  const bounceWallData = useMemo(() => makeBounceWallData(maze, position), [maze, position]);
-  const paramsRef = useRef(sightParams);
-  const bounceWallDataRef = useRef(bounceWallData);
+function visibilityPolygon(maze: Maze, origin: Vector) {
+  const walls = wallSegments(maze);
+  const angles = walls.flatMap((wall) => [
+    Math.atan2(wall.y1 - origin.y, wall.x1 - origin.x),
+    Math.atan2(wall.y2 - origin.y, wall.x2 - origin.x),
+  ]).flatMap((angle) => [angle - CORNER_EPSILON, angle, angle + CORNER_EPSILON]);
 
-  useEffect(() => {
-    paramsRef.current = sightParams;
-    bounceWallDataRef.current = bounceWallData;
-  }, [bounceWallData, sightParams]);
+  return angles.map((angle): VisibilityPoint | null => {
+    let closest: ReturnType<typeof raySegmentIntersection> = null;
+    for (const wall of walls) {
+      const hit = raySegmentIntersection(origin, angle, wall);
+      if (hit && (!closest || hit.distance < closest.distance)) closest = hit;
+    }
+    return closest ? { x: closest.x, y: closest.y, angle } : null;
+  }).filter((point): point is VisibilityPoint => point !== null)
+    .sort((left, right) => left.angle - right.angle);
+}
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+function mergeCollinearWalls(segments: WallSegment[]) {
+  const groups = new Map<string, WallSegment[]>();
+  for (const wall of segments) {
+    const horizontal = wall.y1 === wall.y2;
+    const key = horizontal ? `h:${wall.y1}` : `v:${wall.x1}`;
+    const group = groups.get(key) ?? [];
+    group.push(wall);
+    groups.set(key, group);
+  }
 
-    let cancelled = false;
-    let gpu: import("vgpu").Gpu | undefined;
-    let sightSurface: import("vgpu").Surface | undefined;
-    let sightEffect: import("vgpu").Effect | undefined;
-    let cellWallStorage: import("vgpu").StorageBuffer | undefined;
-    let bounceWallStorage: import("vgpu").StorageBuffer | undefined;
-    let loop: import("vgpu").FrameLoopHandle | undefined;
-    let removeErrorListener: (() => void) | undefined;
-
-    const setStatus = (status: "pending" | "ready" | "fallback") => {
-      canvas.dataset.vgpuStatus = status;
-    };
-
-    const setFallback = (error: unknown) => {
-      if (error instanceof Error) {
-        const gpuError = error as Error & {
-          code?: string;
-          fix?: string;
-          where?: string;
-          cause?: unknown;
-          detail?: unknown;
-        };
-        canvas.dataset.vgpuError = JSON.stringify({
-          name: gpuError.name,
-          message: gpuError.message,
-          code: gpuError.code,
-          fix: gpuError.fix,
-          where: gpuError.where,
-          cause:
-            gpuError.cause && typeof gpuError.cause === "object"
-              ? {
-                  name: "name" in gpuError.cause ? String(gpuError.cause.name) : undefined,
-                  message: "message" in gpuError.cause ? String(gpuError.cause.message) : undefined,
-                  text: String(gpuError.cause),
-                }
-              : gpuError.cause,
-          detail: gpuError.detail,
-        });
+  const merged: WallSegment[] = [];
+  for (const [groupKey, group] of groups) {
+    const horizontal = groupKey.startsWith("h:");
+    const sorted = [...group].sort((left, right) => horizontal ? left.x1 - right.x1 : left.y1 - right.y1);
+    let current = { ...sorted[0] };
+    for (const wall of sorted.slice(1)) {
+      const currentEnd = horizontal ? current.x2 : current.y2;
+      const nextStart = horizontal ? wall.x1 : wall.y1;
+      if (nextStart <= currentEnd + GEOMETRY_EPSILON) {
+        if (horizontal) current.x2 = Math.max(current.x2, wall.x2);
+        else current.y2 = Math.max(current.y2, wall.y2);
       } else {
-        canvas.dataset.vgpuError = String(error);
+        merged.push({ ...current, key: `merged-${merged.length}` });
+        current = { ...wall };
       }
-      setStatus("fallback");
-    };
+    }
+    merged.push({ ...current, key: `merged-${merged.length}` });
+  }
+  return merged;
+}
 
-    const dispose = () => {
-      loop?.stop();
-      sightSurface?.dispose();
-      cellWallStorage?.destroy();
-      bounceWallStorage?.destroy();
-      removeErrorListener?.();
-      gpu?.dispose();
-    };
+function rayThroughPointWallParameter(origin: Vector, point: Vector, wall: WallSegment) {
+  const direction = { x: point.x - origin.x, y: point.y - origin.y };
+  const wallVector = { x: wall.x2 - wall.x1, y: wall.y2 - wall.y1 };
+  const denominator = direction.x * wallVector.y - direction.y * wallVector.x;
+  if (Math.abs(denominator) < GEOMETRY_EPSILON) return null;
 
-    setStatus("pending");
+  const offset = { x: wall.x1 - origin.x, y: wall.y1 - origin.y };
+  const rayDistance = (offset.x * wallVector.y - offset.y * wallVector.x) / denominator;
+  const wallParameter = (offset.x * direction.y - offset.y * direction.x) / denominator;
+  if (rayDistance <= 0 || wallParameter <= GEOMETRY_EPSILON || wallParameter >= 1 - GEOMETRY_EPSILON) return null;
+  return wallParameter;
+}
 
-    if (!("gpu" in navigator)) {
-      setStatus("fallback");
-      return () => undefined;
+function pointIsOccluded(origin: Vector, point: Vector, walls: WallSegment[], targetWall: WallSegment) {
+  const direction = { x: point.x - origin.x, y: point.y - origin.y };
+  return walls.some((wall) => {
+    if (wall.key === targetWall.key) return false;
+    const wallVector = { x: wall.x2 - wall.x1, y: wall.y2 - wall.y1 };
+    const denominator = direction.x * wallVector.y - direction.y * wallVector.x;
+    if (Math.abs(denominator) < GEOMETRY_EPSILON) return false;
+    const offset = { x: wall.x1 - origin.x, y: wall.y1 - origin.y };
+    const rayDistance = (offset.x * wallVector.y - offset.y * wallVector.x) / denominator;
+    const wallParameter = (offset.x * direction.y - offset.y * direction.x) / denominator;
+    return rayDistance > GEOMETRY_EPSILON
+      && rayDistance < 1 - GEOMETRY_EPSILON
+      && wallParameter >= -GEOMETRY_EPSILON
+      && wallParameter <= 1 + GEOMETRY_EPSILON;
+  });
+}
+
+function wallPoint(wall: WallSegment, parameter: number) {
+  return {
+    x: wall.x1 + (wall.x2 - wall.x1) * parameter,
+    y: wall.y1 + (wall.y2 - wall.y1) * parameter,
+  };
+}
+
+function visibleWallIntervals(maze: Maze, origin: Vector) {
+  const sourceWalls = wallSegments(maze);
+  const walls = mergeCollinearWalls(sourceWalls);
+  const corners = sourceWalls.flatMap((wall) => [{ x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }]);
+  const visible: WallSegment[] = [];
+
+  for (const wall of walls) {
+    const cuts = [0, 1, ...corners.map((corner) => rayThroughPointWallParameter(origin, corner, wall))
+      .filter((parameter): parameter is number => parameter !== null)]
+      .sort((left, right) => left - right)
+      .filter((parameter, index, values) => index === 0 || parameter - values[index - 1] > GEOMETRY_EPSILON);
+    let activeStart: number | null = null;
+
+    for (let index = 0; index < cuts.length - 1; index += 1) {
+      const start = cuts[index];
+      const end = cuts[index + 1];
+      if (end - start <= GEOMETRY_EPSILON) continue;
+      const midpoint = wallPoint(wall, (start + end) / 2);
+      const intervalVisible = !pointIsOccluded(origin, midpoint, walls, wall);
+
+      if (intervalVisible && activeStart === null) activeStart = start;
+      const closesInterval = activeStart !== null && (!intervalVisible || index === cuts.length - 2);
+      if (closesInterval) {
+        const activeEnd = intervalVisible && index === cuts.length - 2 ? end : start;
+        const from = wallPoint(wall, activeStart);
+        const to = wallPoint(wall, activeEnd);
+        visible.push({ key: `visible-${visible.length}`, x1: from.x, y1: from.y, x2: to.x, y2: to.y });
+        activeStart = null;
+      }
+    }
+  }
+  return visible;
+}
+
+export function MazeSightLayer({ maze, position }: { maze: Maze; position: Point }) {
+  const instanceId = svgId(useId());
+  const maskId = `walker-sight-mask-${instanceId}`;
+  const blurId = `walker-sight-blur-${instanceId}`;
+  const gradientId = `walker-sight-gradient-${instanceId}`;
+  const wallGradientId = `walker-wall-gradient-${instanceId}`;
+  const size = maze.cells.length;
+  const [lightPosition, setLightPosition] = useState<Vector>(() => ({ x: position.c + 0.5, y: position.r + 0.5 }));
+  const lightPositionRef = useRef(lightPosition);
+  const polygon = useMemo(() => visibilityPolygon(maze, lightPosition), [lightPosition, maze]);
+  const visibleWalls = useMemo(() => visibleWallIntervals(maze, lightPosition), [lightPosition, maze]);
+  const polygonPoints = polygon.map((point) => `${point.x.toFixed(4)},${point.y.toFixed(4)}`).join(" ");
+
+  useEffect(() => {
+    const from = lightPositionRef.current;
+    const to = { x: position.c + 0.5, y: position.r + 0.5 };
+    const moveDistance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
+    let frame = 0;
+
+    if (moveDistance < GEOMETRY_EPSILON) return undefined;
+    if (moveDistance > 1 + GEOMETRY_EPSILON || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      frame = window.requestAnimationFrame(() => {
+        lightPositionRef.current = to;
+        setLightPosition(to);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
 
-    void (async () => {
-      try {
-        const { effect, frameLoop, init, storage, surface } = await import("vgpu");
-        if (cancelled) return;
-
-        gpu = await init({ label: "echo-maze.walker-sight" });
-        if (cancelled) {
-          gpu.dispose();
-          gpu = undefined;
-          return;
-        }
-
-        sightSurface = surface(gpu, canvas, {
-          alphaMode: "opaque",
-          clearColor: [0, 0, 0, 1],
-          dpr: [1, 1.5],
-          label: "echo-maze.walker-sight-surface",
-        });
-        cellWallStorage = storage(gpu, Math.max(16, cellWallData.byteLength), "read");
-        cellWallStorage.write(cellWallData);
-        bounceWallStorage = storage(gpu, bounceWallDataRef.current.byteLength, "read");
-        bounceWallStorage.write(bounceWallDataRef.current);
-        sightEffect = effect(gpu, SIGHT_SHADER, {
-          label: "echo-maze.walker-sight-effect",
-          set: { params: paramsRef.current, cellWalls: cellWallStorage, bounceWalls: bounceWallStorage },
-        });
-        let lastParams = paramsRef.current;
-        let lastBounceWallData = bounceWallDataRef.current;
-        let lastCanvasWidth = -1;
-        let lastCanvasHeight = -1;
-        let needsRender = true;
-        let displayedWalkerCell: [number, number] = [...lastParams.walkerCell];
-        let transitionFrom: [number, number] = [...displayedWalkerCell];
-        let transitionTo: [number, number] = [...displayedWalkerCell];
-        let transitionStartedAt = 0;
-        let isTransitioning = false;
-        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        canvas.dataset.vgpuTransition = "idle";
-        removeErrorListener = gpu.onError((error) => {
-          if (!cancelled) setFallback(error);
-        });
-        loop = frameLoop(gpu, (frame) => {
-          if (!sightEffect || !sightSurface || !cellWallStorage || !bounceWallStorage) return;
-          let frameChanged = false;
-          let paramsChanged = false;
-          if (bounceWallDataRef.current !== lastBounceWallData) {
-            bounceWallStorage.write(bounceWallDataRef.current);
-            lastBounceWallData = bounceWallDataRef.current;
-            frameChanged = true;
-          }
-          if (paramsRef.current !== lastParams) {
-            const nextParams = paramsRef.current;
-            const nextWalkerCell = nextParams.walkerCell;
-            const moveDistance =
-              Math.abs(nextWalkerCell[0] - transitionTo[0]) + Math.abs(nextWalkerCell[1] - transitionTo[1]);
-            lastParams = nextParams;
-            if (!reduceMotion && moveDistance === 1) {
-              transitionFrom = [...displayedWalkerCell];
-              transitionTo = [...nextWalkerCell];
-              transitionStartedAt = performance.now();
-              isTransitioning = true;
-              canvas.dataset.vgpuTransition = "active";
-            } else {
-              displayedWalkerCell = [...nextWalkerCell];
-              transitionFrom = [...nextWalkerCell];
-              transitionTo = [...nextWalkerCell];
-              isTransitioning = false;
-              canvas.dataset.vgpuTransition = "idle";
-            }
-            paramsChanged = true;
-            frameChanged = true;
-          }
-
-          let paramsForFrame = lastParams;
-          if (isTransitioning) {
-            const progress = Math.min((performance.now() - transitionStartedAt) / LIGHT_TRANSITION_MS, 1);
-            const easedProgress = walkerTransitionEasing(progress);
-            displayedWalkerCell = [
-              transitionFrom[0] + (transitionTo[0] - transitionFrom[0]) * easedProgress,
-              transitionFrom[1] + (transitionTo[1] - transitionFrom[1]) * easedProgress,
-            ];
-            paramsForFrame = { ...lastParams, walkerCell: displayedWalkerCell };
-            paramsChanged = true;
-            frameChanged = true;
-            needsRender = true;
-            if (progress === 1) {
-              isTransitioning = false;
-              canvas.dataset.vgpuTransition = "idle";
-            }
-          }
-          if (paramsChanged) sightEffect.set({ params: paramsForFrame });
-
-          const resized = canvas.width !== lastCanvasWidth || canvas.height !== lastCanvasHeight;
-          if (!needsRender && !frameChanged && !resized) return;
-          frame.pass(sightSurface, sightEffect);
-          lastCanvasWidth = canvas.width;
-          lastCanvasHeight = canvas.height;
-          needsRender = false;
-        }, { fps: 30 });
-        setStatus("ready");
-      } catch (error) {
-        if (!cancelled) setFallback(error);
-        dispose();
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      dispose();
+    const startedAt = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min((now - startedAt) / LIGHT_TRANSITION_MS, 1);
+      const eased = walkerTransitionEasing(progress);
+      const next = {
+        x: from.x + (to.x - from.x) * eased,
+        y: from.y + (to.y - from.y) * eased,
+      };
+      lightPositionRef.current = next;
+      setLightPosition(next);
+      if (progress < 1) frame = window.requestAnimationFrame(animate);
     };
-  }, [cellWallData, maze]);
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [position.c, position.r]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="maze-sight-canvas"
+    <svg
+      className="maze-sight-canvas maze-sight-svg"
+      viewBox={`0 0 ${size} ${size}`}
+      preserveAspectRatio="none"
       aria-hidden="true"
-      data-vgpu-status="pending"
-      data-vgpu-transition="idle"
-    />
+      data-sight-renderer="visibility-polygon"
+    >
+      <defs>
+        <filter id={blurId} x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
+          <feGaussianBlur stdDeviation="0.075" />
+        </filter>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x="-1" y="-1" width={size + 2} height={size + 2}>
+          <polygon points={polygonPoints} fill="white" filter={`url(#${blurId})`} />
+        </mask>
+        <radialGradient
+          id={gradientId}
+          gradientUnits="userSpaceOnUse"
+          cx={lightPosition.x}
+          cy={lightPosition.y}
+          r={Math.max(3.4, size * 0.72)}
+        >
+          <stop offset="0" stopColor="#f0f7ff" stopOpacity="0.98" />
+          <stop offset="0.16" stopColor="#527ceb" stopOpacity="0.96" />
+          <stop offset="0.52" stopColor="#0033e5" stopOpacity="0.9" />
+          <stop offset="1" stopColor="#102a72" stopOpacity="0.58" />
+        </radialGradient>
+        <radialGradient
+          id={wallGradientId}
+          gradientUnits="userSpaceOnUse"
+          cx={lightPosition.x}
+          cy={lightPosition.y}
+          r={Math.max(3.4, size * 0.72)}
+        >
+          <stop offset="0" stopColor="#c0d0ff" stopOpacity="0.96" />
+          <stop offset="0.42" stopColor="#c0d0ff" stopOpacity="0.72" />
+          <stop offset="1" stopColor="#c0d0ff" stopOpacity="0.42" />
+        </radialGradient>
+      </defs>
+      <rect width={size} height={size} fill={`url(#${gradientId})`} mask={`url(#${maskId})`} />
+      <g className="maze-sight-walls" stroke={`url(#${wallGradientId})`}>
+        {visibleWalls.map((wall) => (
+          <line key={wall.key} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} />
+        ))}
+      </g>
+    </svg>
   );
 }
