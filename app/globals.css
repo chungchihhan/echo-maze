@@ -1276,24 +1276,8 @@ h1 em {
 }
 
 .walker-light-grid .maze-structure-walls-base {
-  opacity: .18;
+  opacity: 0;
   stroke: var(--ice);
-}
-
-.walker-light-grid .maze-structure-walls-lit {
-  opacity: 1;
-  pointer-events: none;
-}
-
-.walker-light-grid .maze-structure-walls-lit {
-  stroke: var(--ice);
-  stroke-width: .035;
-}
-
-.walker-light-grid .maze-structure-walls-lit line {
-  opacity: var(--wall-light, 0);
-  transition: opacity 1.1s cubic-bezier(.22, 1, .36, 1);
-  will-change: opacity;
 }
 
 .maze-structure-marker {
@@ -1356,7 +1340,7 @@ h1 em {
 .swatch-walker { border: 2px solid var(--ice); background: var(--signal); }
 .swatch-visible { background: var(--maze-visible); }
 .swatch-light { background: var(--ice); box-shadow: 0 0 8px rgb(240 247 255 / 72%); }
-.swatch-structure { width: 12px; height: 2px; border-radius: 0; background: var(--ice); }
+.swatch-hidden-area { background: var(--pitch); box-shadow: 0 0 0 1px rgb(240 247 255 / 32%); }
 .swatch-unknown { width: 3px; height: 3px; background: var(--pitch); }
 
 .map-viewport {
@@ -1476,6 +1460,13 @@ h1 em {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.maze-sight-walls {
+  fill: none;
+  stroke-width: .03;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
 }
 
 .local-cell { position: relative; display: grid; place-items: center; background: var(--maze-visible); border-style: solid; border-width: 1px; }

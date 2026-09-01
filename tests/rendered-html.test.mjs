@@ -89,7 +89,7 @@ test("server-renders the complete replay workspace", async () => {
   assert.match(html, /app-navigation/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
   assert.match(text, /featured demo/);
-  assert.match(text, /The maze stays unlit; Walker light follows wall-blocked sightlines\./);
+  assert.match(text, /Darkness hides the maze; Walker light follows wall-blocked sightlines\./);
   assert.match(html, /replay-play/);
   assert.doesNotMatch(text, /Watch one agent remember what it saw/);
   assert.doesNotMatch(html, /class="footer-note"/);
@@ -195,25 +195,21 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(replayUi, /ReplayDetailViewer/);
   assert.match(replayUi, /Reveal full maze/);
   assert.match(replayUi, /Show Walker light/);
-  assert.match(shared, /showWallLight position=\{game\.position\}/);
-  assert.match(replayUi, /showWallLight position=\{game\.position\}/);
-  assert.match(mazeStructure, /wallLightOpacity/);
-  assert.match(mazeStructure, /maze-structure-walls-lit/);
-  assert.doesNotMatch(mazeStructure, /maze-structure-walls-lit-haze/);
-  assert.doesNotMatch(styles, /maze-structure-walls-lit-haze/);
+  assert.match(mazeSight, /maze-sight-walls/);
+  assert.match(mazeSight, /walker-wall-gradient/);
+  assert.match(mazeSight, /mergeCollinearWalls/);
+  assert.match(mazeSight, /visibleWallIntervals/);
+  assert.match(mazeSight, /pointIsOccluded/);
+  assert.doesNotMatch(mazeSight, /clipPath/);
+  assert.doesNotMatch(mazeStructure, /showWallLight|wallLightOpacity|maze-structure-walls-lit/);
   assert.match(styles, /maze-structure-walls-base/);
-  assert.match(styles, /transition: opacity 1\.1s/);
-  assert.match(mazeSight, /makeCellWallData\(/);
-  assert.match(mazeSight, /cellWalls/);
-  assert.match(mazeSight, /\{ fps: 30 \}/);
-  assert.match(mazeSight, /LIGHT_TRANSITION_MS = 1_100/);
-  assert.match(mazeSight, /walkerTransitionEasing/);
-  assert.match(mazeSight, /data-vgpu-transition="idle"/);
-  assert.match(mazeSight, /import\("vgpu"\)/);
-  assert.match(mazeSight, /bounceRadiance/);
-  assert.match(mazeSight, /bounceWalls/);
-  assert.match(mazeSight, /diffuse/);
-  assert.match(mazeSight, /reflection/);
+  assert.match(mazeSight, /visibilityPolygon/);
+  assert.match(mazeSight, /raySegmentIntersection/);
+  assert.match(mazeSight, /wallSegments/);
+  assert.match(mazeSight, /feGaussianBlur/);
+  assert.match(mazeSight, /radialGradient/);
+  assert.match(mazeSight, /data-sight-renderer="visibility-polygon"/);
+  assert.doesNotMatch(mazeSight, /rayVisibility|import\("vgpu"\)|bounceRadiance/);
   assert.doesNotMatch(replayUi, /requestAgent|recordReplay|Export replay|Auto-run/);
 
   // The agent route is Solo-Walker-only against the Responses API.

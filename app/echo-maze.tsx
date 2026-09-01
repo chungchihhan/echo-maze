@@ -475,13 +475,14 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
 }
 
 function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
+  const exitVisible = observeWalkerCell(game.maze.cells, game.maze.exit, game.position).exitVisible;
   return (
     <>
       <div className={`map-layer walker-light-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-        {!hidden ? <MazeSightLayer maze={game.maze} position={game.position} /> : null}
+        {!hidden ? <MazeSightLayer key={game.maze.seed} maze={game.maze} position={game.position} /> : null}
       </div>
       <div className={`map-layer walker-structure-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-        <MazeStructure maze={game.maze} ariaLabel="Unlit maze with Walker light" className="walker-light-grid" showExit showWallLight position={game.position}>
+        <MazeStructure maze={game.maze} ariaLabel="Hidden maze with Walker light" className="walker-light-grid" showExit={exitVisible}>
           <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
         </MazeStructure>
       </div>
@@ -511,7 +512,7 @@ function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameSta
       <div className="map-legend-slot" aria-hidden="true">
         <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
           <span><i className="legend-swatch swatch-light" />Walker light</span>
-          <span><i className="legend-swatch swatch-structure" />Unlit maze</span>
+          <span><i className="legend-swatch swatch-hidden-area" />Hidden area</span>
         </div>
         <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
           <span><i className="legend-swatch swatch-walker" />Walker&apos;s actual position</span>
@@ -522,7 +523,7 @@ function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameSta
         <p className="map-mode-caption">
           {showFullMap
             ? "Spectator mode: the complete map and actual position are never shown to Walker."
-            : "The maze stays unlit; Walker light follows wall-blocked sightlines."}
+            : "Darkness hides the maze; Walker light follows wall-blocked sightlines."}
         </p>
       ) : null}
     </div>
