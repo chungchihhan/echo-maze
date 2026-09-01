@@ -204,13 +204,16 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       const { OrbitControls } = controlsModule;
       const size = mazes[0].cells.length;
       const scene = new three.Scene();
-      const camera = new three.PerspectiveCamera(42, 1, 0.1, 100);
+      const baseCameraFov = 42;
+      const heroContentWidth = 640;
+      const camera = new three.PerspectiveCamera(baseCameraFov, 1, 0.1, 100);
       // Start at a 45-degree elevation so the maze reads as a space, not a flat plan.
       camera.position.set(11, 15.5, 11);
 
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setClearColor(0x0033e5, 0);
       renderer.outputColorSpace = three.SRGBColorSpace;
+      renderer.autoClear = false;
 
       const controls = new OrbitControls(camera, canvas);
       controls.enableDamping = true;
@@ -527,12 +530,21 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
 
       stage.classList.add("is-ready");
 
+      let canvasWidth = 1;
+      let canvasHeight = 1;
+      let sceneViewportWidth = 1;
       const resize = () => {
         const rect = stage.getBoundingClientRect();
         const width = Math.max(1, rect.width);
         const height = Math.max(1, rect.height);
+        canvasWidth = width;
+        canvasHeight = height;
+        sceneViewportWidth = Math.min(width, heroContentWidth);
         renderer.setSize(width, height, false);
-        camera.aspect = width / height;
+        camera.aspect = sceneViewportWidth / height;
+        camera.fov = three.MathUtils.radToDeg(
+          2 * Math.atan(Math.tan(three.MathUtils.degToRad(baseCameraFov / 2)) * (width / sceneViewportWidth)),
+        );
         camera.updateProjectionMatrix();
       };
       const observer = new ResizeObserver(resize);
@@ -649,7 +661,14 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
           wallMaterial.uniforms.time.value = time * 0.001;
           atmosphere.rotation.y = time * 0.000025;
         }
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, canvasWidth, canvasHeight);
+        renderer.clear();
+        renderer.setViewport(0, 0, sceneViewportWidth, canvasHeight);
+        renderer.setScissor(0, 0, sceneViewportWidth, canvasHeight);
+        renderer.setScissorTest(true);
         renderer.render(scene, camera);
+        renderer.setScissorTest(false);
         frameId = window.requestAnimationFrame(render);
       };
       frameId = window.requestAnimationFrame(render);
