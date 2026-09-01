@@ -119,6 +119,16 @@ async function main() {
   const manifest = JSON.parse(await readFile(path.join(source, "manifest.json"), "utf8"));
   await mkdir(path.join(out, "runs"), { recursive: true });
   const runs = [];
+  let existingCuration = new Map();
+  try {
+    const existingIndex = JSON.parse(await readFile(path.join(out, "index.json"), "utf8"));
+    existingCuration = new Map((existingIndex.runs ?? []).map((run) => [run.id, {
+      featured: run.featured,
+      homepageOrder: run.homepage_order,
+    }]));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 
   for (const fixtureId of manifest.fixtureOrder ?? []) {
     const episodeDir = path.join(source, "episodes", fixtureId);
@@ -132,6 +142,7 @@ async function main() {
     const events = publicEvents(transcript);
     const playbackDuration = playbackDurationMs(events);
     const id = `${manifest.batchId}--${fixtureId}`;
+    const curation = existingCuration.get(id);
     const status = publishedStatus(summary, transcript);
     const startedAt = transcript.find((event) => event.type === "episode_start")?.startedAt ?? manifest.createdAt;
     const endedAt = transcript.find((event) => event.type === "episode_end")?.endedAt ?? startedAt;
@@ -193,6 +204,8 @@ async function main() {
       batch_id: manifest.batchId,
       policy_revision: manifest.policyRevision,
       playback_duration_ms: playbackDuration,
+      featured: curation?.featured ?? true,
+      homepage_order: curation?.homepageOrder ?? runs.length + 1,
     });
   }
 
