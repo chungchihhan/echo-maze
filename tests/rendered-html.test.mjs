@@ -132,7 +132,7 @@ test("published benchmark index is valid and its runs are replayable", async () 
 });
 
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
-  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore] = await Promise.all([
+  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/echo-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay/page.tsx", import.meta.url), "utf8"),
@@ -149,6 +149,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../lib/maze/index.js", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai/vercel-client.js", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai/walker-decision.js", import.meta.url), "utf8"),
   ]);
 
   // The public home mounts the featured replay; the full replay presentation has its own route.
@@ -212,19 +214,23 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.doesNotMatch(mazeSight, /rayVisibility|import\("vgpu"\)|bounceRadiance/);
   assert.doesNotMatch(replayUi, /requestAgent|recordReplay|Export replay|Auto-run/);
 
-  // The agent route is Solo-Walker-only against the Responses API.
+  // The agent route is Solo-Walker-only through the shared SDK boundary.
   assert.equal(mazeCore.includes("react"), false);
   assert.equal(mazeCore.includes("cloudflare"), false);
   assert.equal(mazeCore.includes("openai"), false);
   assert.match(route, /const MODEL = "gpt-5\.6-luna"/);
-  assert.match(route, /You are the Walker inside Echo Maze\./);
+  assert.match(decisionContract, /You are the Walker inside Echo Maze\./);
   assert.match(route, /role !== "solo_walker"/);
   assert.doesNotMatch(route, /role: "navigator"|role: "walker"|routeBetween|deterministic route tool/);
-  assert.match(route, /https:\/\/api\.openai\.com\/v1\/responses/);
   assert.match(route, /const timeoutMs = 90_000/);
-  assert.match(route, /incomplete_details/);
-  assert.match(route, /maxOutputTokens \* attempt/);
+  assert.match(route, /createEchoMazeAIClient/);
+  assert.match(route, /maxOutputTokens: 900 \* attempt/);
   assert.match(route, /invalid_structured_json/);
+  assert.match(aiClient, /createOpenAI/);
+  assert.match(aiClient, /createOpenRouter/);
+  assert.match(aiClient, /\.responses\(config\.model\)/);
+  assert.match(aiClient, /\.chat\(config\.model\)/);
+  assert.match(aiClient, /maxRetries: 0/);
 
   // Persistence, hosting, and runtime boundaries remain compatible.
   assert.match(replayRoute, /CREATE TABLE IF NOT EXISTS replay_runs/);
@@ -236,5 +242,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(packageJson, /"benchmark:run"/);
   assert.match(packageJson, /"benchmark:verify"/);
   assert.match(packageJson, /"replay:publish"/);
+  assert.match(packageJson, /"ai"/);
+  assert.match(packageJson, /"@ai-sdk\/openai"/);
+  assert.match(packageJson, /"@openrouter\/ai-sdk-provider"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });
