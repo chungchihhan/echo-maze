@@ -9,10 +9,18 @@
  */
 
 import { createHash } from "node:crypto";
+import {
+  OUTPUT_FRAMING,
+  RESPONSE_SCHEMA,
+  RESPONSE_SCHEMA_NAME,
+  WALKER_PROMPT,
+} from "../lib/ai/walker-decision.js";
 import { MAX_ROUTE_LENGTH, MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
 
+export { OUTPUT_FRAMING, RESPONSE_SCHEMA, RESPONSE_SCHEMA_NAME, WALKER_PROMPT };
+
 export const BENCHMARK_VERSION = "v0";
-export const POLICY_REVISION = "v0.7";
+export const POLICY_REVISION = "v0.8";
 export const GENERATOR_VERSION = "maze-gen-2";
 export const OBSERVATION_VERSION = "corridor-sightline-v1";
 
@@ -59,6 +67,16 @@ export const INTER_EPISODE_COOLDOWN_MS = 30_000;
 export const RATE_LIMIT_RETRY_BASE_MS = 30_000;
 export const MAX_OUTPUT_TOKENS_BASE = 2000;
 export const REASONING_EFFORT = "low";
+export const AI_TRANSPORT = {
+  sdk: "Vercel AI SDK",
+  coreMajor: 7,
+  openaiProviderMajor: 4,
+  openrouterProviderMajor: 3,
+  sdkRetries: 0,
+  policy:
+    "Provider requests use the shared Vercel AI SDK transport with structured output. "
+    + "SDK retries are disabled; Echo Maze owns every retry, pacing delay, and attempt record.",
+};
 
 export const RETRY_POLICY =
   "Transport failures (timeout (180s), network error, HTTP 408/409/429/5xx, unreadable API response with 5xx, " +
@@ -81,49 +99,6 @@ export const HIDDEN_STATE_POLICY =
   "per-visible-cell open directions and isExit flag, last action/result) plus the current run's " +
   "conversation. No full maze, no exit coordinates, no seed, no optimal route, no unseen cells, and no " +
   "spectator state may enter the prompt.";
-
-export const WALKER_PROMPT = [
-  "You are the Walker inside Echo Maze.",
-  "Your goal is to reach the exit.",
-  "You cannot see the complete maze, your absolute position, or any hidden state. You have no route-finding tool.",
-  "Each turn, you receive your current local observation, open and blocked absolute directions, straight line-of-sight information, the result of your previous action, and the complete conversation from the current run.",
-  "The starting cell is defined as relative position (0,0). A successful move right changes x by +1, left changes x by -1, up changes y by +1, and down changes y by -1. A blocked move does not change your position.",
-  "Return exactly three fields.",
-  "estimated_position: Your current estimate of your relative position. This is your own estimate and may be wrong.",
-  "notes: Notes that will be included in later turns of this run. You may use this field in any way you find useful. Choose your own format and decide what is worth recording.",
-  "action: Choose exactly one of up, right, down, or left.",
-  "Explore the maze using your own strategy and reach the exit. Base your decisions only on the provided observations and conversation.",
-].join(" ");
-
-export const RESPONSE_SCHEMA_NAME = "solo_walker_decision";
-
-export const RESPONSE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    estimated_position: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        x: { type: "integer", minimum: -100, maximum: 100 },
-        y: { type: "integer", minimum: -100, maximum: 100 },
-      },
-      required: ["x", "y"],
-    },
-    notes: { type: "string", minLength: 1, maxLength: 280 },
-    action: { type: "string", enum: ["up", "right", "down", "left"] },
-  },
-  required: ["estimated_position", "notes", "action"],
-};
-
-/**
- * Output framing appended to the user message by every provider adapter so
- * structured-output compliance is requested identically regardless of
- * whether the transport natively enforces a JSON schema.
- */
-export const OUTPUT_FRAMING =
-  "\n\nRespond with ONLY a single valid JSON object (no markdown, no extra text) exactly matching this JSON schema: "
-  + JSON.stringify(RESPONSE_SCHEMA);
 
 /** Stable JSON stringify with recursively sorted object keys. */
 export function stableStringify(value) {
@@ -162,6 +137,7 @@ export const RULES = {
   retryPolicy: RETRY_POLICY,
   maxOutputTokensBase: MAX_OUTPUT_TOKENS_BASE,
   reasoningEffort: REASONING_EFFORT,
+  aiTransport: AI_TRANSPORT,
   modelAllowlist: MODEL_ALLOWLIST,
   outputFraming: "JSON-only output instruction (OUTPUT_FRAMING) appended to every request; response_format json_schema also passed where supported.",
   moveSemantics: "One attempted move per turn; blocked moves keep the Walker in place.",
@@ -226,6 +202,7 @@ export function contractDescriptor() {
     retryPolicy: RETRY_POLICY,
     maxOutputTokensBase: MAX_OUTPUT_TOKENS_BASE,
     reasoningEffort: REASONING_EFFORT,
+    aiTransport: AI_TRANSPORT,
     coordinateSystem: COORDINATE_SYSTEM,
     hiddenStatePolicy: HIDDEN_STATE_POLICY,
     promptHash: PROMPT_HASH,

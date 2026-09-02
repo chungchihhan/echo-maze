@@ -10,9 +10,10 @@ This module implements the headless Echo Maze Benchmark: a versioned contract, s
 
 ## Start here
 
-- `contract.js` — versioned v0 contract (policy revision v0.7): route-length tiers, suite defaults, model allowlist, turn/timeout/retry/pacing policy, prompt, schema, output framing, and their hashes
+- `contract.js` — versioned v0 contract (policy revision v0.8): route-length tiers, suite defaults, model allowlist, turn/timeout/retry/pacing policy, prompt, schema, SDK transport revision, output framing, and their hashes
 - `fixtures.js` — deterministic suite generation plus batch-local snapshot persistence, loading, hashing, and verification
-- `adapters/openai-adapter.js`, `adapters/openrouter-adapter.js` — provider transports; transport retries recorded with exponential backoff honoring provider reset hints; invalid model output recorded, never repaired
+- `adapters/vercel-adapter.js` — benchmark retry, pacing, output extraction, and attempt diagnostics around the shared Vercel AI SDK transport
+- `adapters/openai-adapter.js`, `adapters/openrouter-adapter.js` — thin provider entrypoints; SDK retries stay disabled so benchmark retries remain observable
 - `adapters/retry-delay.js` — shared bounded backoff and Retry-After parsing used by both live adapters
 - `adapters/mock-adapter.js` — deterministic offline explorer used by dry runs
 - `episode.js` — episode state machine emitting append-only events
