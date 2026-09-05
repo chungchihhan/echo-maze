@@ -54,6 +54,7 @@ export type ReplayRunSummary = {
   spl?: number;
   batch_id?: string;
   policy_revision?: string;
+  reasoning_effort?: string | null;
   playback_duration_ms?: number;
 };
 type ReplayEvent = { sequence: number; createdAt: number; turn: number; phase: string; type: string; payload: unknown };
