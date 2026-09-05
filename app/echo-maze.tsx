@@ -1702,9 +1702,9 @@ export function ReplayHome() {
             <div><span>{playbackFrame?.note ?? "Select a run to begin"}</span><strong>{isReplayMode ? `${playbackIndex + 1} / ${playbackFrames.length}` : "0 / 0"}</strong></div>
           </div>
           <div className="replay-transport">
-            <button type="button" onClick={() => selectAdjacentRun(-1)} disabled={selectedRunIndex <= 0} aria-label="Previous run" aria-keyshortcuts="Shift+ArrowLeft" title="Previous run · Shift + ←">◀</button>
+            <button type="button" onClick={() => selectAdjacentRun(-1)} disabled={selectedRunIndex <= 0} aria-label="Previous run" aria-keyshortcuts="Shift+ArrowLeft" title="Previous run · Shift + ←"><span className="replay-run-skip-icon" aria-hidden="true">◀◀</span></button>
             <button className="replay-transport-play" type="button" onClick={toggleReplayPlayback} disabled={!isReplayMode || playbackFrames.length < 2} aria-label={isReplayPlaying ? "Pause replay" : "Play replay"} aria-keyshortcuts="Space" title="Play or pause · Space">{isReplayPlaying ? "Ⅱ" : "▶"}</button>
-            <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run" aria-keyshortcuts="Shift+ArrowRight" title="Next run · Shift + →">▶</button>
+            <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run" aria-keyshortcuts="Shift+ArrowRight" title="Next run · Shift + →"><span className="replay-run-skip-icon" aria-hidden="true">▶▶</span></button>
           </div>
           <div className="replay-current-run"><strong>{selectedReplay?.maze_seed ?? "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
           <div className="replay-player-options">

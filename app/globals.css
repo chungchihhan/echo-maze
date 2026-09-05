@@ -2107,7 +2107,9 @@ h1 em {
 }
 .replay-transport button:disabled,
 .replay-player-options button:disabled { cursor: not-allowed; opacity: .35; }
+.replay-transport > button:not(.replay-transport-play) { border-color: transparent; }
 .replay-transport .replay-transport-play { width: 48px; height: 48px; color: var(--cobalt); background: var(--ice); border-color: var(--ice); border-radius: 50%; }
+.replay-run-skip-icon { display: inline-block; letter-spacing: -4px; transform: translateX(-2px); }
 .replay-current-run { display: grid; grid-column: 1; grid-row: 2; min-width: 0; gap: 2px; align-self: center; }
 .replay-current-run strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .replay-current-run span { font-size: 10px; opacity: .66; text-transform: uppercase; }
