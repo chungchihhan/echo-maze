@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   DIRECTIONS,
@@ -110,6 +110,14 @@ type ReplayFrame = {
 };
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 type ReplayCueIndex = 0 | 1 | 2 | 3;
+type ReplayLyricCue = {
+  turn: number;
+  label: string;
+  content: string;
+  kind: "copy" | "estimate" | "action";
+  result: MoveResult | null;
+};
+type ReplayLyricCueState = "is-active" | "is-past" | "is-future";
 
 const HERO_MAZES = [
   generateMaze(seededRandom("ECHO-MAZE-HERO-01"), "HERO01"),
@@ -510,7 +518,7 @@ function SpectatorMap({ game, hidden }: { game: GameState; hidden: boolean }) {
   );
 }
 
-function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameState; showFullMap: boolean; showCaption?: boolean }) {
+const MazeViewport = memo(function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameState; showFullMap: boolean; showCaption?: boolean }) {
   return (
     <div className="map-viewport">
       <div className="map-stage-shell">
@@ -538,7 +546,32 @@ function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameSta
       ) : null}
     </div>
   );
-}
+});
+
+const ReplayLyricCueItem = memo(function ReplayLyricCueItem({
+  cue,
+  cueIndex,
+  cueState,
+}: {
+  cue: ReplayLyricCue;
+  cueIndex: number;
+  cueState: ReplayLyricCueState;
+}) {
+  return (
+    <section
+      className={`replay-lyric-cue ${cueState} is-${cue.kind}`}
+      data-replay-cue={cueIndex}
+    >
+      <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
+      {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
+      {cue.kind === "action" ? (
+        <em className={cue.result === "blocked" ? "is-blocked" : ""}>
+          {cue.result === "blocked" ? "Blocked — stayed in place" : cue.result === "moved" ? "Move succeeded" : "Awaiting move"}
+        </em>
+      ) : null}
+    </section>
+  );
+});
 
 function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThinking: boolean }) {
   const streamRef = useRef<HTMLDivElement>(null);
@@ -1324,7 +1357,7 @@ export function ReplayHome() {
     }
     return [...turns.values()].sort((a, b) => a.turn - b.turn);
   }, [playbackFrames]);
-  const lyricCues = useMemo(() => replayThoughts.flatMap((thought) => {
+  const lyricCues = useMemo<ReplayLyricCue[]>(() => replayThoughts.flatMap((thought) => {
     const direction = DIRECTIONS.find((item) => item.key === thought.direction)?.label ?? "—";
     return [
       { turn: thought.turn, label: "ENVIRONMENT INPUT", content: thought.observationSummary, kind: "copy", result: null },
@@ -1472,31 +1505,23 @@ export function ReplayHome() {
             <div><span>MOVES</span><strong>{String(moveCount).padStart(2, "0")}</strong></div>
             <div><span>WALL HITS</span><strong>{String(playbackFrame?.game.collisions ?? 0).padStart(2, "0")}</strong></div>
           </div>
-          <div className="replay-lyric-viewport" ref={lyricViewportRef}>
-            <div className="replay-lyric-track">
-              {lyricCues.length === 0 ? (
-                <section className="replay-lyric-cue is-active is-copy" data-replay-cue="0">
-                  <span><i>01</i>ENVIRONMENT INPUT</span>
-                  <p>Waiting for the first observation.</p>
-                </section>
-              ) : lyricCues.map((cue, cueIndex) => {
-                const cueState = cueIndex === activeLyricCueIndex ? "is-active" : cueIndex < activeLyricCueIndex ? "is-past" : "is-future";
-                return (
-                  <section
-                    className={`replay-lyric-cue ${cueState} is-${cue.kind}`}
-                    key={`${cue.turn}-${cue.label}`}
-                    data-replay-cue={cueIndex}
-                  >
-                    <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
-                    {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
-                    {cue.kind === "action" ? (
-                      <em className={cue.result === "blocked" ? "is-blocked" : ""}>
-                        {cue.result === "blocked" ? "Blocked — stayed in place" : cue.result === "moved" ? "Move succeeded" : "Awaiting move"}
-                      </em>
-                    ) : null}
+          <div className="replay-lyric-window">
+            <div className="replay-lyric-viewport" ref={lyricViewportRef}>
+              <div className="replay-lyric-track">
+                {lyricCues.length === 0 ? (
+                  <section className="replay-lyric-cue is-active is-copy" data-replay-cue="0">
+                    <span><i>01</i>ENVIRONMENT INPUT</span>
+                    <p>Waiting for the first observation.</p>
                   </section>
-                );
-              })}
+                ) : lyricCues.map((cue, cueIndex) => (
+                  <ReplayLyricCueItem
+                    cue={cue}
+                    cueIndex={cueIndex}
+                    cueState={cueIndex === activeLyricCueIndex ? "is-active" : cueIndex < activeLyricCueIndex ? "is-past" : "is-future"}
+                    key={`${cue.turn}-${cue.label}`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
             </aside>
