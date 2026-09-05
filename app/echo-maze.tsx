@@ -514,7 +514,8 @@ function WalkerView({ game, hidden, moveDurationMs, motionKey }: { game: GameSta
 function SpectatorMap({ game, hidden, moveDurationMs, motionKey }: { game: GameState; hidden: boolean; moveDurationMs: number; motionKey: string }) {
   return (
     <div className={`map-layer spectator-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-      <MazeStructure maze={game.maze} ariaLabel="Complete maze spectator view" showStart showExit>
+      {!hidden ? <MazeSightLayer key={`${game.maze.seed}-${motionKey}-full`} maze={game.maze} position={game.position} transitionMs={moveDurationMs} /> : null}
+      <MazeStructure maze={game.maze} ariaLabel="Complete maze spectator view with Walker light" className="spectator-maze-grid" showStart showExit>
         <GridWalkerMarker key={`${game.maze.seed}-${motionKey}`} position={game.position} size={game.maze.cells.length} transitionMs={moveDurationMs} />
       </MazeStructure>
     </div>
