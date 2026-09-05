@@ -10,7 +10,8 @@ This module is the server boundary for model calls and durable replay storage. I
 
 ## Start here
 
-- `app/api/agent/route.ts` — OpenAI Responses API call, fixed Solo Walker prompt, JSON schema, timeout/retry, and error diagnostics
+- `app/api/agent/route.ts` — fixed Solo Walker request policy around the shared Vercel AI SDK client, with timeout/retry and error diagnostics
+- `lib/ai/` — shared OpenAI/OpenRouter provider transport plus the Walker prompt and JSON schema
 - `app/api/replays/route.ts` — D1 table setup, replay run/event writes, listing, compact playback, and export response
 - `db/schema.ts` — Drizzle representation of the replay tables
 - `.openai/hosting.json` — configured `DB` binding
@@ -18,7 +19,7 @@ This module is the server boundary for model calls and durable replay storage. I
 
 ## Architecture and boundaries
 
-- `POST /api/agent` reads `OPENAI_API_KEY` from the Cloudflare Worker environment and calls the Responses API with `gpt-5.6-luna`. The only supported flow is `role: "solo_walker"`; do not add other agent roles without an explicit product decision.
+- `POST /api/agent` reads `OPENAI_API_KEY` from the Cloudflare Worker environment and uses the shared Vercel AI SDK client to call OpenAI Responses with `gpt-5.6-luna`. The only supported flow is `role: "solo_walker"`; do not add other agent roles without an explicit product decision.
 - The agent route enforces structured output but does not repair or reject a blocked action; the environment records it as a wall hit. Its current request policy is a 90-second timeout and up to two attempts, with retryability encoded in the error response.
 - `POST /api/replays` stores the run header and ordered event stream in D1. `GET /api/replays` serves both the run library and full/compact replay payloads consumed by the browser.
 - Keep `cloudflare:workers`, secrets, and D1 access inside server routes. Do not import route handlers, environment bindings, or database clients into `app/page.tsx`.

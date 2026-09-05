@@ -52,6 +52,31 @@ import {
 import { regenerateSummary } from "../benchmark/summarize.js";
 import { runBatch } from "../benchmark/run-batch.js";
 
+function openAIResponse({ id, status = "completed", model = "gpt-5.6-luna", text = null, usage = null }) {
+  return {
+    id,
+    object: "response",
+    created_at: 1,
+    status,
+    ...(status === "incomplete" ? { incomplete_details: { reason: "max_output_tokens" } } : {}),
+    model,
+    output: text === null ? [] : [{
+      id: `${id}_message`,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text, annotations: [] }],
+    }],
+    usage: usage ?? {
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens_details: { reasoning_tokens: 0 },
+    },
+  };
+}
+
 test("maze core is deterministic and semantically stable", () => {
   const a = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
   const b = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
@@ -349,16 +374,18 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
     if (calls.length === 1) {
       return new Response(JSON.stringify({ error: { code: "server_error", message: "boom" } }), { status: 500 });
     }
-    return new Response(JSON.stringify({
+    return new Response(JSON.stringify(openAIResponse({
       id: "resp_1",
-      status: "completed",
-      model: "gpt-5.6-luna",
-      usage: { input_tokens: 5, output_tokens: 5, total_tokens: 10 },
-      output_text: JSON.stringify({
+      usage: {
+        input_tokens: 5, output_tokens: 5, total_tokens: 10,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      },
+      text: JSON.stringify({
         estimated_position: { x: 0, y: 0 }, notes: "c",
         action: "up",
       }),
-    }), { status: 200, headers: { "x-request-id": "req_1" } });
+    })), { status: 200, headers: { "content-type": "application/json", "x-request-id": "req_1" } });
   };
   const adapter = createOpenAIAdapter("test-key-not-a-secret", {
     fetchImpl,
@@ -380,9 +407,9 @@ test("OpenAI adapter records attempts and never repairs invalid output", async (
   let invalidCalls = 0;
   const invalidFetch = async () => {
     invalidCalls += 1;
-    return new Response(JSON.stringify({
-      id: "resp_2", status: "completed", output_text: "not json at all",
-    }), { status: 200 });
+    return new Response(JSON.stringify(openAIResponse({
+      id: "resp_2", text: "not json at all",
+    })), { status: 200, headers: { "content-type": "application/json" } });
   };
   const invalidAdapter = createOpenAIAdapter("test-key-not-a-secret", { fetchImpl: invalidFetch, timeoutMs: 1000, pacingMs: 0 });
   const invalidResult = await invalidAdapter({ turn: 1, observation: {}, conversation: [] });
@@ -426,7 +453,7 @@ test("OpenAI adapter forwards requested model and doubles incomplete-output budg
   const bodies = [];
   /** @type {any[]} */
   const delays = [];
-  const requestedModel = "openai/gpt-5.6-luna";
+  const requestedModel = "gpt-5.6-sol";
   const good = JSON.stringify({
     estimated_position: { x: 0, y: 0 }, notes: "c",
     action: "up",
@@ -434,14 +461,16 @@ test("OpenAI adapter forwards requested model and doubles incomplete-output budg
   const fetchImpl = async (_url, init) => {
     bodies.push(JSON.parse(init.body));
     if (bodies.length === 1) {
-      return new Response(JSON.stringify({ id: "resp_1", status: "incomplete", model: "actual-model-a" }), {
+      return new Response(JSON.stringify(openAIResponse({
+        id: "resp_1", status: "incomplete", model: "actual-model-a",
+      })), {
         status: 200,
-        headers: { "retry-after": "0" },
+        headers: { "content-type": "application/json", "retry-after": "0" },
       });
     }
-    return new Response(JSON.stringify({
-      id: "resp_2", status: "completed", model: "actual-model-b", output_text: good,
-    }), { status: 200 });
+    return new Response(JSON.stringify(openAIResponse({
+      id: "resp_2", model: "actual-model-b", text: good,
+    })), { status: 200, headers: { "content-type": "application/json" } });
   };
   const adapter = createOpenAIAdapter("test-key-not-a-secret", {
     fetchImpl,
