@@ -1790,11 +1790,12 @@ h1 em {
   grid-row: 1 / 3;
   min-width: 0;
   min-height: 0;
+  margin-right: 12px;
   contain: size;
   flex-direction: column;
   color: var(--cobalt);
   background: var(--ice);
-  border-right: 2px solid var(--ice);
+  border-inline: 2px solid var(--ice);
 }
 
 .replay-player-library-head {
@@ -2206,7 +2207,7 @@ h1 em {
     min-height: 0;
     overflow: visible;
   }
-  .replay-player-library { grid-column: 1; grid-row: 2; max-height: clamp(240px, 36vh, 320px); border-right: 0; border-bottom: 2px solid var(--ice); }
+  .replay-player-library { grid-column: 1; grid-row: 2; max-height: clamp(240px, 36vh, 320px); margin-right: 0; border-bottom: 2px solid var(--ice); }
   .replay-now-playing { grid-column: 1; grid-row: 1; align-items: flex-start; flex-direction: column; }
   .replay-now-playing-meta { text-align: left; }
   .replay-player-main { display: block; grid-column: 1; grid-row: 3; overflow: visible; container-type: normal; }
