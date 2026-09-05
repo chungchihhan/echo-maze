@@ -1763,7 +1763,7 @@ h1 em {
   --replay-page-edge: clamp(8px, 2vh, 16px);
   display: grid;
   align-content: safe center;
-  width: min(1440px, calc(100% - 48px));
+  width: min(1320px, calc(100% - clamp(64px, 8vw, 120px)));
   min-height: 100vh;
   min-height: 100dvh;
   padding: var(--replay-page-edge) 0;
@@ -1799,16 +1799,16 @@ h1 em {
 
 .replay-player-library-head {
   display: grid;
-  justify-items: end;
+  justify-items: start;
   gap: 8px;
   min-height: 92px;
-  padding: 20px 18px 16px 72px;
+  padding: 20px 18px 16px 24px;
   border-bottom: 1px solid var(--mist);
-  text-align: right;
+  text-align: left;
 }
 
-.replay-player-library-head .panel-label { font-size: 11px; letter-spacing: .04em; }
-.replay-player-library-head strong { font-size: var(--text-body-sm); font-weight: 400; }
+.replay-player-library-head .panel-label { font-size: var(--text-body); letter-spacing: 0; }
+.replay-player-library-head strong { font-size: 12px; font-weight: 400; }
 
 .replay-run-list {
   --replay-library-row-height: 62px;
