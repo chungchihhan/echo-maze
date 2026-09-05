@@ -9,7 +9,7 @@ type VisibilityPoint = Vector & { angle: number };
 
 const CORNER_EPSILON = 0.00008;
 const GEOMETRY_EPSILON = 0.000001;
-const LIGHT_TRANSITION_MS = 1_100;
+const DEFAULT_LIGHT_TRANSITION_MS = 1_100;
 
 function svgId(value: string) {
   return value.replaceAll(":", "");
@@ -170,7 +170,15 @@ function visibleWallIntervals(maze: Maze, origin: Vector) {
   return visible;
 }
 
-export function MazeSightLayer({ maze, position }: { maze: Maze; position: Point }) {
+export function MazeSightLayer({
+  maze,
+  position,
+  transitionMs = DEFAULT_LIGHT_TRANSITION_MS,
+}: {
+  maze: Maze;
+  position: Point;
+  transitionMs?: number;
+}) {
   const instanceId = svgId(useId());
   const maskId = `walker-sight-mask-${instanceId}`;
   const blurId = `walker-sight-blur-${instanceId}`;
@@ -200,7 +208,7 @@ export function MazeSightLayer({ maze, position }: { maze: Maze; position: Point
 
     const startedAt = performance.now();
     const animate = (now: number) => {
-      const progress = Math.min((now - startedAt) / LIGHT_TRANSITION_MS, 1);
+      const progress = Math.min((now - startedAt) / transitionMs, 1);
       const eased = walkerTransitionEasing(progress);
       const next = {
         x: from.x + (to.x - from.x) * eased,
@@ -212,7 +220,7 @@ export function MazeSightLayer({ maze, position }: { maze: Maze; position: Point
     };
     frame = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frame);
-  }, [position.c, position.r]);
+  }, [position.c, position.r, transitionMs]);
 
   return (
     <svg

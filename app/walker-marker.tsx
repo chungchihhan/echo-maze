@@ -10,16 +10,24 @@ export function WalkerMarker({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function GridWalkerMarker({ position, size }: { position: Point; size: number }) {
+export function GridWalkerMarker({
+  position,
+  size,
+  transitionMs = 1_100,
+}: {
+  position: Point;
+  size: number;
+  transitionMs?: number;
+}) {
   const cellSize = `${100 / size}%`;
   return (
     <span
       className="walker-grid-position"
       style={{
-        left: `${position.c * 100 / size}%`,
-        top: `${position.r * 100 / size}%`,
+        transform: `translate3d(${position.c * 100}%, ${position.r * 100}%, 0)`,
         width: cellSize,
         height: cellSize,
+        "--walker-move-duration": `${transitionMs}ms`,
       } as CSSProperties}
       aria-hidden="true"
     >
