@@ -2110,9 +2110,49 @@ h1 em {
 .replay-current-run span { font-size: 10px; opacity: .66; text-transform: uppercase; }
 .replay-player-options { display: flex; align-items: end; justify-content: flex-end; gap: 8px; }
 .replay-player-options { grid-column: 3; grid-row: 2; }
-.replay-player-options label { display: grid; gap: 3px; }
-.replay-player-options label span { font-size: 9px; text-transform: uppercase; }
-.replay-player-options select { min-width: 72px; min-height: 38px; padding: 0 8px; color: var(--ice); background: var(--cobalt); border: 1px solid rgb(240 247 255 / 56%); color-scheme: dark; }
+.replay-speed-picker { position: relative; }
+.replay-player-options .replay-speed-trigger {
+  display: inline-flex;
+  min-width: 100px;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  color: var(--ice);
+  background: transparent;
+  border: 1px solid rgb(240 247 255 / 56%);
+  cursor: pointer;
+  list-style: none;
+}
+.replay-speed-trigger > span { line-height: inherit; text-transform: uppercase; white-space: nowrap; }
+.replay-speed-trigger:focus-visible,
+.replay-speed-menu button:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.replay-speed-menu {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  min-width: 112px;
+  padding: 5px;
+  color: var(--cobalt);
+  background: var(--ice);
+  border: 1px solid var(--cobalt);
+  box-shadow: 6px 6px 0 rgb(0 18 108 / 30%);
+}
+.replay-speed-menu button {
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+  justify-content: space-between;
+  padding: 0 9px;
+  color: var(--cobalt);
+  background: transparent;
+  border: 0;
+}
+.replay-speed-menu button:hover,
+.replay-speed-menu button.is-selected { color: var(--ice); background: var(--cobalt); }
+.replay-speed-menu button i { font-size: 8px; font-style: normal; }
 
 @media (max-width: 1240px) {
   .replay-player {
