@@ -109,6 +109,7 @@ type ReplayFrame = {
   error: string | null;
 };
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
+const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 1, 2, 4, 8];
 type ReplayCueIndex = 0 | 1 | 2 | 3;
 type ReplayLyricCue = {
   turn: number;
@@ -588,6 +589,66 @@ const ReplayLyricCueItem = memo(function ReplayLyricCueItem({
     </section>
   );
 });
+
+function ReplaySpeedPicker({ value, onChange }: { value: PlaybackSpeed; onChange: (speed: PlaybackSpeed) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsOpen(false);
+      pickerRef.current?.querySelector<HTMLButtonElement>(".replay-speed-trigger")?.focus();
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePress);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePress);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className={`replay-speed-picker ${isOpen ? "is-open" : ""}`} ref={pickerRef}>
+      <button
+        className="replay-speed-trigger"
+        type="button"
+        aria-label={`Playback speed ${value} times`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-keyshortcuts="Shift+Comma Shift+Period"
+        title="Slower · Shift + <  /  Faster · Shift + >"
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <span>SPEED&nbsp;&nbsp;{value}×</span>
+      </button>
+      {isOpen ? (
+        <div className="replay-speed-menu" role="listbox" aria-label="Playback speed">
+          {PLAYBACK_SPEEDS.map((speed) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === speed}
+              className={value === speed ? "is-selected" : ""}
+              key={speed}
+              onClick={() => {
+                onChange(speed);
+                setIsOpen(false);
+              }}
+            >
+              <span>{speed}×</span>
+              {value === speed ? <i aria-hidden="true">●</i> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThinking: boolean }) {
   const streamRef = useRef<HTMLDivElement>(null);
@@ -1339,7 +1400,10 @@ export function ReplayHome() {
   const settledPlaybackFrame = playbackFrames[settledPlaybackIndex] ?? playbackFrame;
   const isReplayMode = Boolean(selectedReplayId && playbackFrame);
   const selectedReplay = replayRuns.find((run) => run.id === selectedReplayId) ?? null;
-  const visibleReplayRuns = replayRuns.filter((run) => run.is_demo || (run.max_turn ?? 0) > 0);
+  const visibleReplayRuns = useMemo(
+    () => replayRuns.filter((run) => run.is_demo || (run.max_turn ?? 0) > 0),
+    [replayRuns],
+  );
   const replayGroups = useMemo(() => {
     const configurations = new Map<string, {
       model: string;
@@ -1424,7 +1488,7 @@ export function ReplayHome() {
     viewport.scrollTo({ top: Math.max(0, targetTop), behavior: reduceMotion ? "auto" : "smooth" });
   }, [activeLyricCueIndex, lyricCues.length, reduceMotion, selectedReplayId]);
 
-  function toggleReplayPlayback() {
+  const toggleReplayPlayback = useCallback(() => {
     if (!isReplayPlaying && playbackIndex >= playbackFrames.length - 1) {
       setPlaybackIndex(0);
       setSettledPlaybackIndex(0);
@@ -1432,15 +1496,49 @@ export function ReplayHome() {
       setActiveCueIndex(0);
     }
     setIsReplayPlaying((value) => !value);
-  }
+  }, [isReplayPlaying, playbackFrames.length, playbackIndex]);
 
-  function selectAdjacentRun(offset: -1 | 1) {
+  const selectAdjacentRun = useCallback((offset: -1 | 1) => {
     const adjacentRun = visibleReplayRuns[selectedRunIndex + offset];
     if (adjacentRun) {
       setSelectedReplayConfiguration(replayConfigurationKey(adjacentRun));
       void loadReplay(adjacentRun.id);
     }
-  }
+  }, [loadReplay, selectedRunIndex, visibleReplayRuns]);
+
+  useEffect(() => {
+    const handleReplayShortcut = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, button, a, summary, [contenteditable='true']")) return;
+
+      if (event.code === "Space") {
+        if (!isReplayMode || playbackFrames.length < 2 || event.repeat) return;
+        event.preventDefault();
+        toggleReplayPlayback();
+        return;
+      }
+      if (event.shiftKey && (event.key === "<" || event.key === ">")) {
+        event.preventDefault();
+        const currentSpeedIndex = PLAYBACK_SPEEDS.indexOf(playbackSpeed);
+        const direction = event.key === "<" ? -1 : 1;
+        const nextSpeedIndex = Math.max(0, Math.min(PLAYBACK_SPEEDS.length - 1, currentSpeedIndex + direction));
+        setPlaybackSpeed(PLAYBACK_SPEEDS[nextSpeedIndex]);
+        return;
+      }
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const offset = event.key === "ArrowLeft" ? -1 : 1;
+      if (event.shiftKey) {
+        if (!event.repeat) selectAdjacentRun(offset);
+        return;
+      }
+      if (!isReplayMode || playbackFrames.length < 2) return;
+      seekPlaybackFrame(playbackIndex + offset);
+    };
+    window.addEventListener("keydown", handleReplayShortcut);
+    return () => window.removeEventListener("keydown", handleReplayShortcut);
+  }, [isReplayMode, playbackFrames.length, playbackIndex, playbackSpeed, seekPlaybackFrame, selectAdjacentRun, toggleReplayPlayback]);
 
   return (
     <main className="echo-app replay-page replay-player-page">
@@ -1577,18 +1675,19 @@ export function ReplayHome() {
               onChange={(event) => seekPlaybackFrame(Number(event.target.value))}
               disabled={!isReplayMode || playbackFrames.length < 2}
               aria-label="Replay position"
+              aria-keyshortcuts="ArrowLeft ArrowRight"
               style={{ "--replay-progress": `${playbackProgress}%` } as CSSProperties}
             />
             <div><span>{playbackFrame?.note ?? "Select a run to begin"}</span><strong>{isReplayMode ? `${playbackIndex + 1} / ${playbackFrames.length}` : "0 / 0"}</strong></div>
           </div>
           <div className="replay-transport">
-            <button type="button" onClick={() => selectAdjacentRun(-1)} disabled={selectedRunIndex <= 0} aria-label="Previous run">◀</button>
-            <button className="replay-transport-play" type="button" onClick={toggleReplayPlayback} disabled={!isReplayMode || playbackFrames.length < 2} aria-label={isReplayPlaying ? "Pause replay" : "Play replay"}>{isReplayPlaying ? "Ⅱ" : "▶"}</button>
-            <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run">▶</button>
+            <button type="button" onClick={() => selectAdjacentRun(-1)} disabled={selectedRunIndex <= 0} aria-label="Previous run" aria-keyshortcuts="Shift+ArrowLeft" title="Previous run · Shift + ←">◀</button>
+            <button className="replay-transport-play" type="button" onClick={toggleReplayPlayback} disabled={!isReplayMode || playbackFrames.length < 2} aria-label={isReplayPlaying ? "Pause replay" : "Play replay"} aria-keyshortcuts="Space" title="Play or pause · Space">{isReplayPlaying ? "Ⅱ" : "▶"}</button>
+            <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run" aria-keyshortcuts="Shift+ArrowRight" title="Next run · Shift + →">▶</button>
           </div>
           <div className="replay-current-run"><strong>{selectedReplay?.maze_seed ?? "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
           <div className="replay-player-options">
-            <label><span>SPEED</span><select value={playbackSpeed} onChange={(event) => setPlaybackSpeed(Number(event.target.value) as PlaybackSpeed)}><option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option><option value={8}>8×</option></select></label>
+            <ReplaySpeedPicker value={playbackSpeed} onChange={setPlaybackSpeed} />
             <button type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>{showFullMap ? "Walker light" : "Full map"}</button>
           </div>
         </footer>

@@ -91,6 +91,10 @@ test("server-renders the complete replay workspace", async () => {
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
   assert.match(text, /Full map/);
   assert.match(html, /replay-transport-play/);
+  assert.match(html, /replay-speed-picker/);
+  assert.match(html, /aria-keyshortcuts="Space"/);
+  assert.match(html, /aria-keyshortcuts="Shift\+ArrowLeft"/);
+  assert.match(html, /aria-keyshortcuts="Shift\+Comma Shift\+Period"/);
   assert.doesNotMatch(text, /Watch one agent remember what it saw/);
   assert.doesNotMatch(html, /class="footer-note"/);
 });
