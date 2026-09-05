@@ -503,7 +503,7 @@ function WalkerView({ game, hidden, moveDurationMs, motionKey }: { game: GameSta
         {!hidden ? <MazeSightLayer key={`${game.maze.seed}-${motionKey}`} maze={game.maze} position={game.position} transitionMs={moveDurationMs} /> : null}
       </div>
       <div className={`map-layer walker-structure-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-        <MazeStructure maze={game.maze} ariaLabel="Hidden maze with Walker light" className="walker-light-grid" showExit={exitVisible}>
+        <MazeStructure maze={game.maze} ariaLabel="Maze in Walker View" className="walker-light-grid" showExit={exitVisible}>
           <GridWalkerMarker key={`${game.maze.seed}-${motionKey}`} position={game.position} size={game.maze.cells.length} transitionMs={moveDurationMs} />
         </MazeStructure>
       </div>
@@ -515,7 +515,7 @@ function SpectatorMap({ game, hidden, moveDurationMs, motionKey }: { game: GameS
   return (
     <div className={`map-layer spectator-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
       {!hidden ? <MazeSightLayer key={`${game.maze.seed}-${motionKey}-full`} maze={game.maze} position={game.position} transitionMs={moveDurationMs} /> : null}
-      <MazeStructure maze={game.maze} ariaLabel="Complete maze spectator view with Walker light" className="spectator-maze-grid" showStart showExit>
+      <MazeStructure maze={game.maze} ariaLabel="Maze in Spectator View" className="spectator-maze-grid" showStart showExit>
         <GridWalkerMarker key={`${game.maze.seed}-${motionKey}`} position={game.position} size={game.maze.cells.length} transitionMs={moveDurationMs} />
       </MazeStructure>
     </div>
@@ -545,7 +545,7 @@ const MazeViewport = memo(function MazeViewport({
       </div>
       <div className="map-legend-slot" aria-hidden="true">
         <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
-          <span><i className="legend-swatch swatch-light" />Walker light</span>
+          <span><i className="legend-swatch swatch-light" />Visible to Walker</span>
           <span><i className="legend-swatch swatch-hidden-area" />Hidden area</span>
         </div>
         <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
@@ -556,8 +556,8 @@ const MazeViewport = memo(function MazeViewport({
       {showCaption ? (
         <p className="map-mode-caption">
           {showFullMap
-            ? "Spectator mode: the complete map and actual position are never shown to Walker."
-            : "Darkness hides the maze; Walker light follows wall-blocked sightlines."}
+            ? "Spectator View reveals the complete map and actual position, which are never shown to Walker."
+            : "Walker View shows only what the agent can see through wall-blocked sightlines."}
         </p>
       ) : null}
     </div>
@@ -796,7 +796,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
         <div className="agent-name-wrap"><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div>
         <div className="card-head-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
-            {showFullMap ? "Show Walker light" : "Reveal full maze"}
+            {showFullMap ? "Walker View" : "Spectator View"}
           </button>
           <span className={`visibility-tag ${showFullMap ? "spectator-tag" : "local-tag"}`}>{showFullMap ? "SPECTATOR" : "LINE OF SIGHT"}</span>
         </div>
@@ -886,7 +886,7 @@ function LandingReplayStage({
         </div>
         <div className="landing-replay-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
-            {showFullMap ? "Show Walker light" : "Reveal full maze"}
+            {showFullMap ? "Walker View" : "Spectator View"}
           </button>
         </div>
       </header>
@@ -1710,7 +1710,7 @@ export function ReplayHome() {
           <div className="replay-current-run"><strong>{selectedReplay?.maze_seed ?? "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
           <div className="replay-player-options">
             <ReplaySpeedPicker value={playbackSpeed} onChange={setPlaybackSpeed} />
-            <button type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>{showFullMap ? "Walker light" : "Full map"}</button>
+            <button type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>{showFullMap ? "Walker View" : "Spectator View"}</button>
           </div>
         </footer>
       </section>

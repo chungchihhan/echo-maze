@@ -89,7 +89,7 @@ test("server-renders the complete replay workspace", async () => {
   assert.doesNotMatch(text, /OUTCOME/);
   assert.match(html, /app-navigation/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
-  assert.match(text, /Full map/);
+  assert.match(text, /Spectator View/);
   assert.match(html, /replay-transport-play/);
   assert.match(html, /replay-speed-picker/);
   assert.match(html, /aria-keyshortcuts="Space"/);
@@ -185,8 +185,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(shared, /type GamePhase = "walker_think" \| "walker_move"/);
   assert.match(shared, /recordReplay/);
   assert.match(shared, /Export replay/);
-  assert.match(shared, /Reveal full maze/);
-  assert.match(shared, /Show Walker light/);
+  assert.match(shared, /Spectator View/);
+  assert.match(shared, /Walker View/);
   assert.match(shared, /animationKey=\{thought\.turn\}/);
   // Reduced-motion CSS removes transitions, but the recorded content must
   // continue advancing because the landing replay has no playback controls.
@@ -201,8 +201,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(replayUi, /HomeReplayChannel/);
   assert.match(replayUi, /ReplayLibrary/);
   assert.match(replayUi, /ReplayDetailViewer/);
-  assert.match(replayUi, /Reveal full maze/);
-  assert.match(replayUi, /Show Walker light/);
+  assert.match(replayUi, /Spectator View/);
+  assert.match(replayUi, /Walker View/);
   assert.match(mazeSight, /maze-sight-walls/);
   assert.match(mazeSight, /walker-wall-gradient/);
   assert.match(mazeSight, /mergeCollinearWalls/);

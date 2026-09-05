@@ -1335,7 +1335,7 @@ h1 em {
 
 .walker-grid-position {
   position: absolute;
-  z-index: 5;
+  z-index: 20;
   top: 0;
   left: 0;
   display: grid;
@@ -1799,12 +1799,15 @@ h1 em {
 
 .replay-player-library-head {
   display: grid;
+  justify-items: end;
   gap: 8px;
   min-height: 92px;
   padding: 20px 18px 16px 72px;
   border-bottom: 1px solid var(--mist);
+  text-align: right;
 }
 
+.replay-player-library-head .panel-label { font-size: 11px; letter-spacing: .04em; }
 .replay-player-library-head strong { font-size: var(--text-body-sm); font-weight: 400; }
 
 .replay-run-list {
