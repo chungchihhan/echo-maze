@@ -568,24 +568,34 @@ const ReplayLyricCueItem = memo(function ReplayLyricCueItem({
   cueIndex,
   cueState,
   result,
+  onSelect,
 }: {
   cue: ReplayLyricCue;
   cueIndex: number;
   cueState: ReplayLyricCueState;
   result: MoveResult | null;
+  onSelect: (turn: number, cueIndex: ReplayCueIndex) => void;
 }) {
   return (
     <section
       className={`replay-lyric-cue ${cueState} is-${cue.kind}`}
       data-replay-cue={cueIndex}
     >
-      <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
-      {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
-      {cue.kind === "action" ? (
-        <em className={result === "blocked" ? "is-blocked" : ""}>
-          {result === "blocked" ? "Blocked — stayed in place" : result === "moved" ? "Move succeeded" : "Awaiting move"}
-        </em>
-      ) : null}
+      <button
+        className="replay-lyric-cue-button"
+        type="button"
+        aria-label={`Go to turn ${cue.turn}, ${cue.label.toLowerCase()}`}
+        aria-current={cueState === "is-active" ? "step" : undefined}
+        onClick={() => onSelect(cue.turn, cueIndex % 4 as ReplayCueIndex)}
+      >
+        <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
+        {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
+        {cue.kind === "action" ? (
+          <em className={result === "blocked" ? "is-blocked" : ""}>
+            {result === "blocked" ? "Blocked — stayed in place" : result === "moved" ? "Move succeeded" : "Awaiting move"}
+          </em>
+        ) : null}
+      </button>
     </section>
   );
 });
@@ -1309,6 +1319,16 @@ export function ReplayHome() {
     setActiveCueIndex(nextFrame?.game.phase === "walker_move" ? 0 : 3);
   }, [playbackFrames]);
 
+  const seekReplayCue = useCallback((turn: number, cueIndex: ReplayCueIndex) => {
+    const decisionFrameIndex = playbackFrames.findIndex((frame) => {
+      const thought = frame.game.history.at(-1);
+      return frame.game.phase === "walker_move" && thought?.turn === turn;
+    });
+    if (decisionFrameIndex < 0) return;
+    seekPlaybackFrame(decisionFrameIndex);
+    setActiveCueIndex(cueIndex);
+  }, [playbackFrames, seekPlaybackFrame]);
+
   const loadReplay = useCallback(async (runId: string) => {
     setSelectedReplayId(runId);
     setIsReplayPlaying(false);
@@ -1655,6 +1675,7 @@ export function ReplayHome() {
                         : cue.turn === currentThought.turn
                           ? currentThought.result
                           : null}
+                    onSelect={seekReplayCue}
                     key={`${cue.turn}-${cue.label}`}
                   />
                 ))}
