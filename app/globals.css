@@ -740,7 +740,7 @@ h1 em {
 .landing-maze-panel .map-stage { max-height: none; }
 .landing-maze-panel .map-stage::after {
   position: absolute;
-  z-index: 5;
+  z-index: 200;
   inset: 0;
   border: 2px solid var(--ice);
   border-right-width: 0;
@@ -1292,6 +1292,12 @@ h1 em {
   stroke: var(--ice);
 }
 
+.spectator-maze-grid .maze-structure-walls-base {
+  opacity: .3;
+  stroke: var(--ice);
+  stroke-width: .03;
+}
+
 .maze-structure-marker {
   position: absolute;
   z-index: 12;
@@ -1401,10 +1407,13 @@ h1 em {
   }
 }
 
-.map-layer { position: absolute; inset: 0; transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s; }
-.map-layer.is-visible { z-index: 2; visibility: visible; opacity: 1; transform: scale(1); transition-delay: 0s; }
-.map-layer.is-hidden { z-index: 1; visibility: hidden; opacity: 0; pointer-events: none; transform: scale(.995); }
+.map-layer { position: absolute; inset: 0; transition: opacity .18s ease, visibility 0s linear .18s; }
+.map-layer.is-visible { z-index: 2; visibility: visible; opacity: 1; transition-delay: 0s; }
+.map-layer.is-hidden { z-index: 1; visibility: hidden; opacity: 0; pointer-events: none; }
 .walker-light-layer.is-visible { z-index: 1; background: var(--pitch); }
+.spectator-map-layer { background: var(--pitch); }
+.spectator-map-layer .maze-sight-canvas { z-index: 1; }
+.spectator-map-layer .maze-structure-stage { z-index: 2; }
 .walker-structure-layer.is-visible,
 .spectator-map-layer.is-visible { z-index: 100; }
 .map-layer .local-grid, .map-layer .full-maze, .map-layer .maze-structure-stage { width: 100%; height: 100%; }
