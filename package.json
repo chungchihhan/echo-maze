@@ -19,6 +19,9 @@
     "replay:publish": "node benchmark/publish-replays.js"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.53",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "ai": "^7.0.87",
     "drizzle-orm": "0.45.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",

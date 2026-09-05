@@ -6,7 +6,9 @@
 - **Vinext** for Next.js App Router-compatible application conventions
 - **Vite 8** for local development and production builds
 - **Cloudflare Workers** for the server runtime
-- **OpenAI Responses API** with `gpt-5.6-luna` for the Walker
+- **Vercel AI SDK** as the shared model boundary, with OpenAI Responses and
+  OpenRouter providers
+- **OpenAI Responses API** with `gpt-5.6-luna` for the current hosted Walker
 - **Cloudflare D1** for durable run and event storage
 - **Drizzle ORM and Drizzle Kit** for the D1 schema and migrations
 - **CSS** in `app/globals.css` for most of the visual design
@@ -65,8 +67,13 @@ npm run db:generate  # Generate Drizzle migrations after schema changes
 - `app/page.tsx` contains the game interface, client-side game loop, run
   recording, and replay playback.
 - `app/globals.css` contains the interface styling and responsive behavior.
-- `app/api/agent/route.ts` builds the Walker prompt, calls the OpenAI Responses
-  API, validates structured output, and returns the next decision.
+- `lib/ai/vercel-client.js` is the shared single-attempt Vercel AI SDK boundary
+  for OpenAI and OpenRouter. SDK retries are disabled so each caller can own
+  its retry policy and diagnostics.
+- `lib/ai/walker-decision.js` owns the shared Walker prompt and structured
+  decision schema.
+- `app/api/agent/route.ts` calls the shared AI client and returns the next
+  structured decision.
 - `app/api/replays/route.ts` creates, updates, lists, and exports replay data.
 - `db/schema.ts` defines the D1 replay tables.
 - `db/index.ts` exposes the Drizzle D1 client.
@@ -79,9 +86,8 @@ npm run db:generate  # Generate Drizzle migrations after schema changes
 1. The browser generates a solvable maze and places the Walker and exit.
 2. The Walker receives its current line-of-sight observation and the complete
    conversation from the current run.
-3. The server asks the model for a structured response containing an
-   observation summary, reasoning summary, believed relative position,
-   coordinate note, and movement direction.
+3. The server asks the model for a structured response containing its estimated
+   relative position, free-form navigation notes, and movement action.
 4. The browser applies exactly one attempted move and reports whether it
    succeeded, hit a wall, or reached the exit.
 5. The next request includes the accumulated history so the Walker can update
@@ -121,7 +127,7 @@ maze core (`lib/maze/`), so environment semantics cannot drift between them.
 - `lib/maze/` — pure maze core: types, seeded generation, movement
   transitions, corridor line-of-sight observation, BFS pathfinding. No React,
   DOM, Cloudflare, D1, or OpenAI dependencies.
-- `benchmark/contract.js` — the versioned v0 contract (policy revision v0.7):
+- `benchmark/contract.js` — the versioned v0 contract (policy revision v0.8):
   route-length tiers, suite defaults, model allowlist, max turns, timeout,
   retry policy, prompt, strict output schema, and their hashes. A parsed
   direction that is visibly blocked counts as a wall hit and consumes the
@@ -130,11 +136,11 @@ maze core (`lib/maze/`), so environment semantics cannot drift between them.
   with equal counts in the 16–23, 24–31, and 32–39 optimal-route tiers. Each
   batch freezes its walls, start, exit, canonical optimal path, and hash under
   `results/<batch>/fixtures/` for resume, summary regeneration, and replay.
-- `benchmark/adapters/` — OpenAI Responses API and OpenRouter adapters. Each
-  request records the requested and provider-returned model, applies the same
-  schema gate, and records transport retries with exponential backoff and
-  `Retry-After`; invalid model output is never repaired. A deterministic mock
-  adapter supports offline dry runs.
+- `benchmark/adapters/` — benchmark policy around the shared Vercel AI SDK
+  transport. Each request records the requested and provider-returned model,
+  applies the same schema gate, and records transport retries with exponential
+  backoff and `Retry-After`; invalid model output is never repaired. The SDK's
+  own retry is disabled. A deterministic mock adapter supports offline dry runs.
 - `benchmark/episode.js` — headless episode state machine emitting an
   append-only event log per episode.
 - `benchmark/metrics.js` — all metrics are recomputed from raw event logs:
