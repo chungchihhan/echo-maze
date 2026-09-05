@@ -78,7 +78,8 @@ test("server-renders the complete replay workspace", async () => {
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(text, /REPLAY LIBRARY/);
   assert.match(text, /recorded runs/);
-  assert.match(text, /NOW PLAYING/);
+  assert.doesNotMatch(text, /NOW PLAYING/);
+  assert.match(text, /gpt-5\.6-luna/);
   assert.match(text, /AGENT OUTPUT/);
   assert.match(text, /ENVIRONMENT INPUT/);
   assert.match(text, /MODEL ESTIMATE/);
