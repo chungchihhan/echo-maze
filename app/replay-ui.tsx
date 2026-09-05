@@ -310,7 +310,7 @@ function WalkerView({ game, hidden }: { game: ReplayGame; hidden: boolean }) {
         {!hidden ? <MazeSightLayer key={game.maze.seed} maze={game.maze} position={game.position} /> : null}
       </div>
       <div className={`map-layer walker-structure-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-        <MazeStructure maze={game.maze} ariaLabel="Hidden maze with Walker light" className="walker-light-grid" showExit={exitVisible}>
+        <MazeStructure maze={game.maze} ariaLabel="Maze in Walker View" className="walker-light-grid" showExit={exitVisible}>
           <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
         </MazeStructure>
       </div>
@@ -337,7 +337,7 @@ function MazeViewport({ game, showFullMap }: { game: ReplayGame; showFullMap: bo
       </div>
       <div className="map-legend-slot" aria-hidden="true">
         <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
-          <span><i className="legend-swatch swatch-light" />Walker light</span>
+          <span><i className="legend-swatch swatch-light" />Visible to Walker</span>
           <span><i className="legend-swatch swatch-hidden-area" />Hidden area</span>
         </div>
         <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
@@ -347,8 +347,8 @@ function MazeViewport({ game, showFullMap }: { game: ReplayGame; showFullMap: bo
       </div>
       <p className="map-mode-caption">
         {showFullMap
-          ? "Spectator mode: the complete map and actual position are never shown to Walker."
-          : "Darkness hides the maze; Walker light follows wall-blocked sightlines."}
+          ? "Spectator View reveals the complete map and actual position, which are never shown to Walker."
+          : "Walker View shows only what the agent can see through wall-blocked sightlines."}
       </p>
     </div>
   );
@@ -471,7 +471,7 @@ function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMa
         <div className="observation-actions">
           {showReplayLink ? <Link className="button open-replay-button" href={`/replays/${encodeURIComponent(detail.run.id)}`}>Open replay <span>↗</span></Link> : null}
           <button className="button view-toggle public-map-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleMap}>
-            {showFullMap ? "Show Walker light" : "Reveal full maze"}
+            {showFullMap ? "Walker View" : "Spectator View"}
           </button>
         </div>
       </div>
