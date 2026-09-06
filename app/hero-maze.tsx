@@ -430,12 +430,11 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       let preloadHandle: number | null = null;
       let preloadUsesIdleCallback = false;
       const schedulePreload = (mazeIndex: number) => {
-        if (mazeIndex >= mazes.length || disposed) return;
+        if (mazeIndex >= mazes.length || disposed || mazeScenes.has(mazeIndex)) return;
         const preload = () => {
           preloadHandle = null;
           if (disposed) return;
           if (!mazeScenes.has(mazeIndex)) mazeScenes.set(mazeIndex, buildMazeScene(mazes[mazeIndex], mazeIndex));
-          schedulePreload(mazeIndex + 1);
         };
         if (typeof window.requestIdleCallback === "function") {
           preloadUsesIdleCallback = true;
@@ -618,6 +617,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
             activeMazeIndex = nextMazeIndex;
             activeMaze = nextMaze;
             activeMaze.group.visible = true;
+            schedulePreload((activeMazeIndex + 1) % mazes.length);
             resetWalkerRoll();
             elapsed = time - walkerAnimationStart;
           }
