@@ -241,7 +241,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       scene.add(grid);
 
       const wallMaterial = createWallMaterial(three);
-      const wallGeometries: Array<InstanceType<typeof three.BoxGeometry>> = [];
+      const wallGeometry = new three.BoxGeometry(1, WALL_HEIGHT, WALL_THICKNESS);
       const lineMaterial = new three.LineBasicMaterial({ color: ICE, transparent: true, opacity: 0.72, depthWrite: false });
       const particleMaterial = new three.PointsMaterial({
         color: ICE,
@@ -307,17 +307,19 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         const start = cellCenter(maze, maze.start);
         const exit = cellCenter(maze, maze.exit);
 
-        for (const segment of segments) {
+        const wallInstances = new three.InstancedMesh(wallGeometry, wallMaterial, segments.length);
+        const wallTransform = new three.Object3D();
+        segments.forEach((segment, segmentIndex) => {
           const horizontal = Math.abs(segment.x2 - segment.x1) > Math.abs(segment.z2 - segment.z1);
           const length = horizontal ? Math.abs(segment.x2 - segment.x1) : Math.abs(segment.z2 - segment.z1);
-          const geometry = horizontal
-            ? new three.BoxGeometry(length, WALL_HEIGHT, WALL_THICKNESS)
-            : new three.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, length);
-          const wall = new three.Mesh(geometry, wallMaterial);
-          wall.position.set((segment.x1 + segment.x2) / 2, WALL_HEIGHT / 2, (segment.z1 + segment.z2) / 2);
-          group.add(wall);
-          wallGeometries.push(geometry);
-        }
+          wallTransform.position.set((segment.x1 + segment.x2) / 2, WALL_HEIGHT / 2, (segment.z1 + segment.z2) / 2);
+          wallTransform.rotation.set(0, horizontal ? 0 : Math.PI / 2, 0);
+          wallTransform.scale.set(length, 1, 1);
+          wallTransform.updateMatrix();
+          wallInstances.setMatrixAt(segmentIndex, wallTransform.matrix);
+        });
+        wallInstances.instanceMatrix.needsUpdate = true;
+        group.add(wallInstances);
 
         const linePositions: number[] = [];
         const addLine = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => {
@@ -725,7 +727,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         document.removeEventListener("visibilitychange", onVisibilityChange);
         motionQuery.removeEventListener("change", onMotionChange);
         controls.dispose();
-        wallGeometries.forEach((geometry) => geometry.dispose());
+        wallGeometry.dispose();
         wallMaterial.dispose();
         lineGeometries.forEach((geometry) => geometry.dispose());
         lineMaterial.dispose();
