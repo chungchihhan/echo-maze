@@ -137,6 +137,10 @@ const LANDING_READOUT_DELAYS_MS = {
 } as const;
 const REPLAY_FRAME_HOLD_MS = 1_100;
 const REPLAY_MOVE_DURATION_MS = 650;
+const REPLAY_CUE_RENDER_RADIUS = 12;
+const REPLAY_MAX_OBSERVED_CUES = 64;
+const EMPTY_CUE_INDEXES = new Set<number>();
+const EMPTY_CUE_HEIGHTS = new Map<number, number>();
 
 function subscribeToReducedMotion(onChange: () => void) {
   const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -569,34 +573,41 @@ const ReplayLyricCueItem = memo(function ReplayLyricCueItem({
   cueIndex,
   cueState,
   result,
+  renderContent,
+  reservedHeight,
   onSelect,
 }: {
   cue: ReplayLyricCue;
   cueIndex: number;
   cueState: ReplayLyricCueState;
   result: MoveResult | null;
+  renderContent: boolean;
+  reservedHeight?: number;
   onSelect: (turn: number, cueIndex: ReplayCueIndex) => void;
 }) {
   return (
     <section
-      className={`replay-lyric-cue ${cueState} is-${cue.kind}`}
+      className={`replay-lyric-cue ${cueState} is-${cue.kind}${renderContent ? "" : " is-virtual-placeholder"}`}
       data-replay-cue={cueIndex}
+      style={!renderContent && reservedHeight ? { height: reservedHeight } : undefined}
     >
-      <button
-        className="replay-lyric-cue-button"
-        type="button"
-        aria-label={`Go to turn ${cue.turn}, ${cue.label.toLowerCase()}`}
-        aria-current={cueState === "is-active" ? "step" : undefined}
-        onClick={() => onSelect(cue.turn, cueIndex % 4 as ReplayCueIndex)}
-      >
-        <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
-        {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
-        {cue.kind === "action" ? (
-          <em className={result === "blocked" ? "is-blocked" : ""}>
-            {result === "blocked" ? "Blocked — stayed in place" : result === "moved" ? "Move succeeded" : "Awaiting move"}
-          </em>
-        ) : null}
-      </button>
+      {renderContent ? (
+        <button
+          className="replay-lyric-cue-button"
+          type="button"
+          aria-label={`Go to turn ${cue.turn}, ${cue.label.toLowerCase()}`}
+          aria-current={cueState === "is-active" ? "step" : undefined}
+          onClick={() => onSelect(cue.turn, cueIndex % 4 as ReplayCueIndex)}
+        >
+          <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
+          {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
+          {cue.kind === "action" ? (
+            <em className={result === "blocked" ? "is-blocked" : ""}>
+              {result === "blocked" ? "Blocked — stayed in place" : result === "moved" ? "Move succeeded" : "Awaiting move"}
+            </em>
+          ) : null}
+        </button>
+      ) : null}
     </section>
   );
 });
@@ -1309,6 +1320,12 @@ export function ReplayHome() {
   const [replayLibraryError, setReplayLibraryError] = useState<string | null>(null);
   const initialReplayLoadedRef = useRef(false);
   const lyricViewportRef = useRef<HTMLDivElement>(null);
+  const lyricTrackRef = useRef<HTMLDivElement>(null);
+  const [cueVirtualization, setCueVirtualization] = useState<{
+    replayId: string;
+    visibleCueIndexes: Set<number>;
+    cueHeights: Map<number, number>;
+  }>(() => ({ replayId: selectedReplayId, visibleCueIndexes: new Set(), cueHeights: new Map() }));
   const reduceMotion = useSyncExternalStore(subscribeToReducedMotion, reducedMotionSnapshot, () => false);
 
   const seekPlaybackFrame = useCallback((index: number) => {
@@ -1479,6 +1496,82 @@ export function ReplayHome() {
   const activeLyricCueIndex = currentThoughtIndex < 0 ? 0 : currentThoughtIndex * 4 + activeCueIndex;
   const selectedRunIndex = visibleReplayRuns.findIndex((run) => run.id === selectedReplayId);
   const playbackProgress = playbackFrames.length > 1 ? playbackIndex / (playbackFrames.length - 1) * 100 : 0;
+  const visibleCueIndexes = cueVirtualization.replayId === selectedReplayId
+    ? cueVirtualization.visibleCueIndexes
+    : EMPTY_CUE_INDEXES;
+  const cueHeights = cueVirtualization.replayId === selectedReplayId
+    ? cueVirtualization.cueHeights
+    : EMPTY_CUE_HEIGHTS;
+
+  useEffect(() => {
+    const viewport = lyricViewportRef.current;
+    const track = lyricTrackRef.current;
+    if (!viewport || !track || typeof IntersectionObserver === "undefined") return undefined;
+
+    const cueElements = [...track.querySelectorAll<HTMLElement>("[data-replay-cue]")];
+    const intersectionObserver = new IntersectionObserver((entries) => {
+      const enteredCueIndexes = entries.flatMap((entry) => {
+        const cueIndex = Number((entry.target as HTMLElement).dataset.replayCue);
+        return entry.isIntersecting && Number.isInteger(cueIndex) ? [cueIndex] : [];
+      });
+      if (enteredCueIndexes.length === 0) return;
+      const anchorCueIndex = enteredCueIndexes.reduce((sum, cueIndex) => sum + cueIndex, 0) / enteredCueIndexes.length;
+      setCueVirtualization((current) => {
+        const base = current.replayId === selectedReplayId
+          ? current
+          : { replayId: selectedReplayId, visibleCueIndexes: new Set<number>(), cueHeights: new Map<number, number>() };
+        const next = new Set(base.visibleCueIndexes);
+        for (const cueIndex of enteredCueIndexes) next.add(cueIndex);
+        if (next.size > REPLAY_MAX_OBSERVED_CUES) {
+          const closestCueIndexes = [...next]
+            .sort((left, right) => Math.abs(left - anchorCueIndex) - Math.abs(right - anchorCueIndex))
+            .slice(0, REPLAY_MAX_OBSERVED_CUES);
+          next.clear();
+          closestCueIndexes.forEach((cueIndex) => next.add(cueIndex));
+        }
+        const changed = next.size !== base.visibleCueIndexes.size
+          || [...next].some((cueIndex) => !base.visibleCueIndexes.has(cueIndex));
+        if (!changed) return base === current ? current : base;
+        return { ...base, visibleCueIndexes: next };
+      });
+    }, { root: viewport, rootMargin: "150% 0px" });
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver((entries) => {
+          const measuredHeights = new Map<number, number>();
+          for (const entry of entries) {
+            const cue = entry.target as HTMLElement;
+            if (!cue.firstElementChild) continue;
+            const cueIndex = Number(cue.dataset.replayCue);
+            const measuredHeight = entry.borderBoxSize[0]?.blockSize ?? cue.offsetHeight;
+            if (Number.isInteger(cueIndex)) measuredHeights.set(cueIndex, measuredHeight);
+          }
+          if (measuredHeights.size === 0) return;
+          setCueVirtualization((current) => {
+            const base = current.replayId === selectedReplayId
+              ? current
+              : { replayId: selectedReplayId, visibleCueIndexes: new Set<number>(), cueHeights: new Map<number, number>() };
+            const nextHeights = new Map(base.cueHeights);
+            let changed = false;
+            for (const [cueIndex, measuredHeight] of measuredHeights) {
+              if (nextHeights.get(cueIndex) === measuredHeight) continue;
+              nextHeights.set(cueIndex, measuredHeight);
+              changed = true;
+            }
+            if (!changed) return base === current ? current : base;
+            return { ...base, cueHeights: nextHeights };
+          });
+        });
+
+    cueElements.forEach((cue) => {
+      intersectionObserver.observe(cue);
+      resizeObserver?.observe(cue);
+    });
+    return () => {
+      intersectionObserver.disconnect();
+      resizeObserver?.disconnect();
+    };
+  }, [lyricCues.length, selectedReplayId]);
 
   useEffect(() => {
     if (!playbackFrame || settledPlaybackIndex === playbackIndex) return;
@@ -1658,7 +1751,7 @@ export function ReplayHome() {
           </div>
           <div className="replay-lyric-window">
             <div className="replay-lyric-viewport" ref={lyricViewportRef}>
-              <div className="replay-lyric-track">
+              <div className="replay-lyric-track" ref={lyricTrackRef}>
                 {lyricCues.length === 0 ? (
                   <section className="replay-lyric-cue is-active is-copy" data-replay-cue="0">
                     <span><i>01</i>ENVIRONMENT INPUT</span>
@@ -1676,6 +1769,8 @@ export function ReplayHome() {
                         : cue.turn === currentThought.turn
                           ? currentThought.result
                           : null}
+                    renderContent={visibleCueIndexes.has(cueIndex) || Math.abs(cueIndex - activeLyricCueIndex) <= REPLAY_CUE_RENDER_RADIUS}
+                    reservedHeight={cueHeights.get(cueIndex)}
                     onSelect={seekReplayCue}
                     key={`${cue.turn}-${cue.label}`}
                   />
