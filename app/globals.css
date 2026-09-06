@@ -159,8 +159,11 @@ input:focus-visible {
   visibility: hidden;
   pointer-events: none;
   transform: translateX(-12px);
-  transition: opacity .24s ease, transform .32s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .32s;
+  transition: top .28s cubic-bezier(.22, 1, .36, 1), left .28s cubic-bezier(.22, 1, .36, 1), opacity .24s ease, transform .32s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .32s;
 }
+
+.app-navigation.is-dragging { transition: none; }
+.app-navigation.is-dragging .nav-menu-toggle { cursor: grabbing; transform: scale(1.04); }
 
 .app-navigation.is-brand-offscreen {
   opacity: 1;
@@ -182,6 +185,8 @@ input:focus-visible {
   border-radius: 50%;
   box-shadow: var(--shadow-ice-ring);
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
   transition: background-color .2s ease, color .2s ease, transform .2s ease;
 }
 
@@ -208,6 +213,12 @@ input:focus-visible {
 }
 
 .app-navigation.is-open .app-nav-popover { opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); }
+.app-navigation[data-popover-horizontal="right"] .app-nav-popover { right: 0; left: auto; transform-origin: top right; }
+.app-navigation:is([data-dock-edge="top"], [data-dock-edge="bottom"]) .app-nav-popover { right: auto; left: var(--nav-popover-x, 0); transform-origin: top center; }
+.app-navigation[data-popover-vertical="up"] .app-nav-popover { top: auto; bottom: calc(100% + 10px); transform: translateY(6px) scale(.98); transform-origin: bottom left; }
+.app-navigation[data-popover-horizontal="right"][data-popover-vertical="up"] .app-nav-popover { transform-origin: bottom right; }
+.app-navigation[data-dock-edge="bottom"] .app-nav-popover { transform-origin: bottom center; }
+.app-navigation.is-open[data-popover-vertical="up"] .app-nav-popover { transform: translateY(0) scale(1); }
 
 .app-nav-heading {
   display: flex;
