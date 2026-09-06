@@ -111,6 +111,7 @@ type ReplayFrame = {
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 1, 2, 4, 8];
 type ReplayCueIndex = 0 | 1 | 2 | 3;
+type ReplayMobilePanel = "library" | "maze" | "output";
 type ReplayLyricCue = {
   turn: number;
   label: string;
@@ -1306,6 +1307,7 @@ export function LiveLab() {
 
 export function ReplayHome() {
   const [showFullMap, setShowFullMap] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<ReplayMobilePanel>("maze");
   const [replayRuns, setReplayRuns] = useState<ReplayRunSummary[]>([DEMO_REPLAY_SUMMARY]);
   const [selectedReplayConfiguration, setSelectedReplayConfiguration] = useState(replayConfigurationKey(DEMO_REPLAY_SUMMARY));
   const [selectedReplayId, setSelectedReplayId] = useState(DEMO_REPLAY_DETAIL.run.id);
@@ -1659,7 +1661,11 @@ export function ReplayHome() {
     <main className="echo-app replay-page replay-player-page">
       <AppNavigation currentPath="/replay" />
       <section className="replay-player" aria-label="Replay player">
-        <aside className="replay-player-library">
+        <aside
+          className={`replay-player-library ${mobilePanel === "library" ? "is-mobile-active" : ""}`}
+          id="replay-library-panel"
+          role="tabpanel"
+        >
           <div className="replay-player-library-head">
             <PanelLabel>REPLAY LIBRARY</PanelLabel>
             <strong>{visibleReplayRuns.length} recorded runs</strong>
@@ -1693,6 +1699,7 @@ export function ReplayHome() {
                           key={run.id}
                           onClick={() => {
                             setSelectedReplayConfiguration(replayConfigurationKey(run));
+                            setMobilePanel("maze");
                             void loadReplay(run.id);
                           }}
                           disabled={isReplayLoading}
@@ -1724,10 +1731,36 @@ export function ReplayHome() {
           </div>
         </header>
 
-        <div className="replay-player-main">
+        <div className="replay-mobile-tabs" aria-label="Replay views" role="tablist">
+          {([
+            ["library", "Library"],
+            ["maze", "Maze"],
+            ["output", "Output"],
+          ] as const).map(([panel, label]) => (
+            <button
+              className={mobilePanel === panel ? "is-selected" : ""}
+              id={`replay-${panel}-tab`}
+              type="button"
+              role="tab"
+              aria-controls={`replay-${panel}-panel`}
+              aria-selected={mobilePanel === panel}
+              key={panel}
+              onClick={() => setMobilePanel(panel)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className={`replay-player-main ${mobilePanel !== "library" ? "is-mobile-active" : ""}`}>
           <div className="replay-player-main-inner">
             {playbackFrame ? (
-              <section className="replay-player-maze" aria-label="Maze playback">
+              <section
+                className={`replay-player-maze ${mobilePanel === "maze" ? "is-mobile-active" : ""}`}
+                id="replay-maze-panel"
+                role="tabpanel"
+                aria-label="Maze playback"
+              >
                 <MazeViewport
                   game={playbackFrame.game}
                   showFullMap={showFullMap}
@@ -1737,10 +1770,19 @@ export function ReplayHome() {
                 />
               </section>
             ) : (
-              <section className="replay-player-maze replay-player-empty"><span>Select a run</span></section>
+              <section
+                className={`replay-player-maze replay-player-empty ${mobilePanel === "maze" ? "is-mobile-active" : ""}`}
+                id="replay-maze-panel"
+                role="tabpanel"
+              ><span>Select a run</span></section>
             )}
 
-            <aside className="replay-player-output" aria-live="polite">
+            <aside
+              className={`replay-player-output ${mobilePanel === "output" ? "is-mobile-active" : ""}`}
+              id="replay-output-panel"
+              role="tabpanel"
+              aria-live="polite"
+            >
           <div className="replay-output-heading">
             <PanelLabel>AGENT OUTPUT</PanelLabel>
             <span>{isReplayLoading ? "Loading…" : `Turn ${String(currentThought?.turn ?? 0).padStart(2, "0")}`}</span>

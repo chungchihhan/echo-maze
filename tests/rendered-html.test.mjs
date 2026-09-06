@@ -90,6 +90,8 @@ test("server-renders the complete replay workspace", async () => {
   assert.match(html, /app-navigation/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
   assert.match(text, /Spectator View/);
+  assert.match(html, /aria-label="Replay views"/);
+  assert.match(text, /Library Maze Output/);
   assert.match(html, /replay-transport-play/);
   assert.match(html, /replay-speed-picker/);
   assert.match(html, /aria-keyshortcuts="Space"/);
