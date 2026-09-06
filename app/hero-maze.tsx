@@ -24,6 +24,7 @@ const EXIT_DROP_MS = 720;
 const EXIT_HOLD_MS = 900;
 const EXIT_RADIUS = 0.34;
 const EXIT_DROP_DISTANCE = 0.48;
+const HERO_FRAME_INTERVAL_MS = 1000 / 60;
 
 function getWallSegments(maze: Maze): WallSegment[] {
   const size = maze.cells.length;
@@ -584,6 +585,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       let pageVisible = document.visibilityState === "visible";
       let stageVisible = true;
       let suspendedAt: number | null = null;
+      let lastRenderedAt: number | null = null;
       const renderingShouldRun = () => pageVisible && stageVisible;
       const render = (time: number) => {
         frameId = 0;
@@ -592,6 +594,12 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
           if (suspendedAt === null) suspendedAt = time;
           return;
         }
+        if (lastRenderedAt !== null && time - lastRenderedAt < HERO_FRAME_INTERVAL_MS - 0.5) {
+          frameId = window.requestAnimationFrame(render);
+          return;
+        }
+        const elapsedSinceRender = lastRenderedAt === null ? HERO_FRAME_INTERVAL_MS : time - lastRenderedAt;
+        lastRenderedAt = time - elapsedSinceRender % HERO_FRAME_INTERVAL_MS;
         controls.update();
         if (!reducedMotion) {
           if (walkerAnimationStart === null) walkerAnimationStart = time;
