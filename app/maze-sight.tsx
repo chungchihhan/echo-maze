@@ -50,12 +50,10 @@ function raySegmentIntersection(origin: Vector, angle: number, wall: WallSegment
   };
 }
 
-function visibilityPolygon(maze: Maze, origin: Vector) {
-  const walls = wallSegments(maze);
-  const angles = walls.flatMap((wall) => [
-    Math.atan2(wall.y1 - origin.y, wall.x1 - origin.x),
-    Math.atan2(wall.y2 - origin.y, wall.x2 - origin.x),
-  ]).flatMap((angle) => [angle - CORNER_EPSILON, angle, angle + CORNER_EPSILON]);
+function visibilityPolygon(walls: WallSegment[], corners: Vector[], origin: Vector) {
+  const angles = corners.map((corner) => (
+    Math.atan2(corner.y - origin.y, corner.x - origin.x)
+  )).flatMap((angle) => [angle - CORNER_EPSILON, angle, angle + CORNER_EPSILON]);
 
   return angles.map((angle): VisibilityPoint | null => {
     let closest: ReturnType<typeof raySegmentIntersection> = null;
@@ -136,10 +134,7 @@ function wallPoint(wall: WallSegment, parameter: number) {
   };
 }
 
-function visibleWallIntervals(maze: Maze, origin: Vector) {
-  const sourceWalls = wallSegments(maze);
-  const walls = mergeCollinearWalls(sourceWalls);
-  const corners = sourceWalls.flatMap((wall) => [{ x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }]);
+function visibleWallIntervals(walls: WallSegment[], corners: Vector[], origin: Vector) {
   const visible: WallSegment[] = [];
 
   for (const wall of walls) {
@@ -187,8 +182,25 @@ export function MazeSightLayer({
   const size = maze.cells.length;
   const [lightPosition, setLightPosition] = useState<Vector>(() => ({ x: position.c + 0.5, y: position.r + 0.5 }));
   const lightPositionRef = useRef(lightPosition);
-  const polygon = useMemo(() => visibilityPolygon(maze, lightPosition), [lightPosition, maze]);
-  const visibleWalls = useMemo(() => visibleWallIntervals(maze, lightPosition), [lightPosition, maze]);
+  const geometry = useMemo(() => {
+    const sourceWalls = wallSegments(maze);
+    return {
+      sourceWalls,
+      mergedWalls: mergeCollinearWalls(sourceWalls),
+      corners: sourceWalls.flatMap((wall) => [
+        { x: wall.x1, y: wall.y1 },
+        { x: wall.x2, y: wall.y2 },
+      ]),
+    };
+  }, [maze]);
+  const polygon = useMemo(
+    () => visibilityPolygon(geometry.sourceWalls, geometry.corners, lightPosition),
+    [geometry, lightPosition],
+  );
+  const visibleWalls = useMemo(
+    () => visibleWallIntervals(geometry.mergedWalls, geometry.corners, lightPosition),
+    [geometry, lightPosition],
+  );
   const polygonPoints = polygon.map((point) => `${point.x.toFixed(4)},${point.y.toFixed(4)}`).join(" ");
 
   useEffect(() => {
