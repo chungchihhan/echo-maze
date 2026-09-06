@@ -210,7 +210,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       // Start at a 45-degree elevation so the maze reads as a space, not a flat plan.
       camera.position.set(11, 15.5, 11);
 
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setClearColor(0x0033e5, 0);
       renderer.outputColorSpace = three.SRGBColorSpace;
       renderer.autoClear = false;
