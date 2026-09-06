@@ -579,8 +579,17 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       motionQuery.addEventListener("change", onMotionChange);
 
       let frameId = 0;
+      let pageVisible = document.visibilityState === "visible";
+      let stageVisible = true;
+      let suspendedAt: number | null = null;
+      const renderingShouldRun = () => pageVisible && stageVisible;
       const render = (time: number) => {
+        frameId = 0;
         if (disposed) return;
+        if (!renderingShouldRun()) {
+          if (suspendedAt === null) suspendedAt = time;
+          return;
+        }
         controls.update();
         if (!reducedMotion) {
           if (walkerAnimationStart === null) walkerAnimationStart = time;
@@ -671,7 +680,39 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         renderer.setScissorTest(false);
         frameId = window.requestAnimationFrame(render);
       };
-      frameId = window.requestAnimationFrame(render);
+
+      const stopRendering = () => {
+        if (suspendedAt === null) suspendedAt = performance.now();
+        if (frameId !== 0) {
+          window.cancelAnimationFrame(frameId);
+          frameId = 0;
+        }
+      };
+      const startRendering = () => {
+        if (!renderingShouldRun() || frameId !== 0) return;
+        const resumedAt = performance.now();
+        if (suspendedAt !== null) {
+          if (walkerAnimationStart !== null) walkerAnimationStart += resumedAt - suspendedAt;
+          suspendedAt = null;
+        }
+        frameId = window.requestAnimationFrame(render);
+      };
+      const onVisibilityChange = () => {
+        pageVisible = document.visibilityState === "visible";
+        if (pageVisible) startRendering();
+        else stopRendering();
+      };
+      const visibilityObserver = typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            stageVisible = entry?.isIntersecting ?? true;
+            if (stageVisible) startRendering();
+            else stopRendering();
+          });
+
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      visibilityObserver?.observe(stage);
+      startRendering();
 
       cleanup = () => {
         window.cancelAnimationFrame(frameId);
@@ -680,6 +721,8 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
           else window.clearTimeout(preloadHandle);
         }
         observer.disconnect();
+        visibilityObserver?.disconnect();
+        document.removeEventListener("visibilitychange", onVisibilityChange);
         motionQuery.removeEventListener("change", onMotionChange);
         controls.dispose();
         wallGeometries.forEach((geometry) => geometry.dispose());
