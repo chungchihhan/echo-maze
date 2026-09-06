@@ -1599,8 +1599,9 @@ export function ReplayHome() {
     const cue = viewport?.querySelector<HTMLElement>(`[data-replay-cue="${activeLyricCueIndex}"]`);
     if (!viewport || !cue) return;
     const targetTop = cue.offsetTop - viewport.clientHeight * .42 + cue.clientHeight / 2;
-    viewport.scrollTo({ top: Math.max(0, targetTop), behavior: reduceMotion ? "auto" : "smooth" });
-  }, [activeLyricCueIndex, lyricCues.length, reduceMotion, selectedReplayId]);
+    const rapidlyAdvancing = isReplayPlaying && playbackSpeed >= 4;
+    viewport.scrollTo({ top: Math.max(0, targetTop), behavior: reduceMotion || rapidlyAdvancing ? "auto" : "smooth" });
+  }, [activeLyricCueIndex, isReplayPlaying, lyricCues.length, playbackSpeed, reduceMotion, selectedReplayId]);
 
   const toggleReplayPlayback = useCallback(() => {
     if (!isReplayPlaying && playbackIndex >= playbackFrames.length - 1) {
