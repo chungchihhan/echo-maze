@@ -24,6 +24,7 @@ const EXIT_DROP_MS = 720;
 const EXIT_HOLD_MS = 900;
 const EXIT_RADIUS = 0.34;
 const EXIT_DROP_DISTANCE = 0.48;
+const HERO_FRAME_INTERVAL_MS = 1000 / 60;
 
 function getWallSegments(maze: Maze): WallSegment[] {
   const size = maze.cells.length;
@@ -210,7 +211,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       // Start at a 45-degree elevation so the maze reads as a space, not a flat plan.
       camera.position.set(11, 15.5, 11);
 
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setClearColor(0x0033e5, 0);
       renderer.outputColorSpace = three.SRGBColorSpace;
       renderer.autoClear = false;
@@ -241,7 +242,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       scene.add(grid);
 
       const wallMaterial = createWallMaterial(three);
-      const wallGeometries: Array<InstanceType<typeof three.BoxGeometry>> = [];
+      const wallGeometry = new three.BoxGeometry(1, WALL_HEIGHT, WALL_THICKNESS);
       const lineMaterial = new three.LineBasicMaterial({ color: ICE, transparent: true, opacity: 0.72, depthWrite: false });
       const particleMaterial = new three.PointsMaterial({
         color: ICE,
@@ -307,17 +308,19 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         const start = cellCenter(maze, maze.start);
         const exit = cellCenter(maze, maze.exit);
 
-        for (const segment of segments) {
+        const wallInstances = new three.InstancedMesh(wallGeometry, wallMaterial, segments.length);
+        const wallTransform = new three.Object3D();
+        segments.forEach((segment, segmentIndex) => {
           const horizontal = Math.abs(segment.x2 - segment.x1) > Math.abs(segment.z2 - segment.z1);
           const length = horizontal ? Math.abs(segment.x2 - segment.x1) : Math.abs(segment.z2 - segment.z1);
-          const geometry = horizontal
-            ? new three.BoxGeometry(length, WALL_HEIGHT, WALL_THICKNESS)
-            : new three.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, length);
-          const wall = new three.Mesh(geometry, wallMaterial);
-          wall.position.set((segment.x1 + segment.x2) / 2, WALL_HEIGHT / 2, (segment.z1 + segment.z2) / 2);
-          group.add(wall);
-          wallGeometries.push(geometry);
-        }
+          wallTransform.position.set((segment.x1 + segment.x2) / 2, WALL_HEIGHT / 2, (segment.z1 + segment.z2) / 2);
+          wallTransform.rotation.set(0, horizontal ? 0 : Math.PI / 2, 0);
+          wallTransform.scale.set(length, 1, 1);
+          wallTransform.updateMatrix();
+          wallInstances.setMatrixAt(segmentIndex, wallTransform.matrix);
+        });
+        wallInstances.instanceMatrix.needsUpdate = true;
+        group.add(wallInstances);
 
         const linePositions: number[] = [];
         const addLine = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => {
@@ -427,12 +430,11 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       let preloadHandle: number | null = null;
       let preloadUsesIdleCallback = false;
       const schedulePreload = (mazeIndex: number) => {
-        if (mazeIndex >= mazes.length || disposed) return;
+        if (mazeIndex >= mazes.length || disposed || mazeScenes.has(mazeIndex)) return;
         const preload = () => {
           preloadHandle = null;
           if (disposed) return;
           if (!mazeScenes.has(mazeIndex)) mazeScenes.set(mazeIndex, buildMazeScene(mazes[mazeIndex], mazeIndex));
-          schedulePreload(mazeIndex + 1);
         };
         if (typeof window.requestIdleCallback === "function") {
           preloadUsesIdleCallback = true;
@@ -579,8 +581,24 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       motionQuery.addEventListener("change", onMotionChange);
 
       let frameId = 0;
+      let pageVisible = document.visibilityState === "visible";
+      let stageVisible = true;
+      let suspendedAt: number | null = null;
+      let lastRenderedAt: number | null = null;
+      const renderingShouldRun = () => pageVisible && stageVisible;
       const render = (time: number) => {
+        frameId = 0;
         if (disposed) return;
+        if (!renderingShouldRun()) {
+          if (suspendedAt === null) suspendedAt = time;
+          return;
+        }
+        if (lastRenderedAt !== null && time - lastRenderedAt < HERO_FRAME_INTERVAL_MS - 0.5) {
+          frameId = window.requestAnimationFrame(render);
+          return;
+        }
+        const elapsedSinceRender = lastRenderedAt === null ? HERO_FRAME_INTERVAL_MS : time - lastRenderedAt;
+        lastRenderedAt = time - elapsedSinceRender % HERO_FRAME_INTERVAL_MS;
         controls.update();
         if (!reducedMotion) {
           if (walkerAnimationStart === null) walkerAnimationStart = time;
@@ -599,6 +617,7 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
             activeMazeIndex = nextMazeIndex;
             activeMaze = nextMaze;
             activeMaze.group.visible = true;
+            schedulePreload((activeMazeIndex + 1) % mazes.length);
             resetWalkerRoll();
             elapsed = time - walkerAnimationStart;
           }
@@ -671,7 +690,39 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
         renderer.setScissorTest(false);
         frameId = window.requestAnimationFrame(render);
       };
-      frameId = window.requestAnimationFrame(render);
+
+      const stopRendering = () => {
+        if (suspendedAt === null) suspendedAt = performance.now();
+        if (frameId !== 0) {
+          window.cancelAnimationFrame(frameId);
+          frameId = 0;
+        }
+      };
+      const startRendering = () => {
+        if (!renderingShouldRun() || frameId !== 0) return;
+        const resumedAt = performance.now();
+        if (suspendedAt !== null) {
+          if (walkerAnimationStart !== null) walkerAnimationStart += resumedAt - suspendedAt;
+          suspendedAt = null;
+        }
+        frameId = window.requestAnimationFrame(render);
+      };
+      const onVisibilityChange = () => {
+        pageVisible = document.visibilityState === "visible";
+        if (pageVisible) startRendering();
+        else stopRendering();
+      };
+      const visibilityObserver = typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            stageVisible = entry?.isIntersecting ?? true;
+            if (stageVisible) startRendering();
+            else stopRendering();
+          });
+
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      visibilityObserver?.observe(stage);
+      startRendering();
 
       cleanup = () => {
         window.cancelAnimationFrame(frameId);
@@ -680,9 +731,11 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
           else window.clearTimeout(preloadHandle);
         }
         observer.disconnect();
+        visibilityObserver?.disconnect();
+        document.removeEventListener("visibilitychange", onVisibilityChange);
         motionQuery.removeEventListener("change", onMotionChange);
         controls.dispose();
-        wallGeometries.forEach((geometry) => geometry.dispose());
+        wallGeometry.dispose();
         wallMaterial.dispose();
         lineGeometries.forEach((geometry) => geometry.dispose());
         lineMaterial.dispose();

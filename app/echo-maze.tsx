@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   DIRECTIONS,
   MIN_ROUTE_LENGTH,
@@ -93,6 +93,10 @@ type ReplayRunSummary = {
   max_turn: number | null;
   had_error: number;
   spl?: number;
+  batch_id?: string;
+  reasoning_effort?: string | null;
+  successful_moves?: number;
+  wall_hits?: number;
   featured?: boolean;
   homepage_order?: number;
   is_demo?: boolean;
@@ -105,6 +109,16 @@ type ReplayFrame = {
   error: string | null;
 };
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
+const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 1, 2, 4, 8];
+type ReplayCueIndex = 0 | 1 | 2 | 3;
+type ReplayLyricCue = {
+  turn: number;
+  label: string;
+  content: string;
+  kind: "copy" | "estimate" | "action";
+  result: MoveResult | null;
+};
+type ReplayLyricCueState = "is-active" | "is-past" | "is-future";
 
 const HERO_MAZES = [
   generateMaze(seededRandom("ECHO-MAZE-HERO-01"), "HERO01"),
@@ -121,6 +135,12 @@ const LANDING_READOUT_DELAYS_MS = {
   moves: 400,
   wallHits: 600,
 } as const;
+const REPLAY_FRAME_HOLD_MS = 1_100;
+const REPLAY_MOVE_DURATION_MS = 650;
+const REPLAY_CUE_RENDER_RADIUS = 12;
+const REPLAY_MAX_OBSERVED_CUES = 64;
+const EMPTY_CUE_INDEXES = new Set<number>();
+const EMPTY_CUE_HEIGHTS = new Map<number, number>();
 
 function subscribeToReducedMotion(onChange: () => void) {
   const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -300,8 +320,13 @@ const DEMO_REPLAY_SUMMARY: ReplayRunSummary = {
   event_count: DEMO_REPLAY_DETAIL.events.length,
   max_turn: DEMO_REPLAY_PROVENANCE.turns,
   had_error: 0,
+  reasoning_effort: "low",
   is_demo: true,
 };
+
+function replayConfigurationKey(run: ReplayRunSummary) {
+  return `${run.model}::${run.reasoning_effort ?? "unspecified"}`;
+}
 
 class AgentRequestError extends Error {
   details: AgentFailure;
@@ -474,44 +499,57 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
   );
 }
 
-function WalkerView({ game, hidden }: { game: GameState; hidden: boolean }) {
+function WalkerView({ game, hidden, moveDurationMs, motionKey }: { game: GameState; hidden: boolean; moveDurationMs: number; motionKey: string }) {
   const exitVisible = observeWalkerCell(game.maze.cells, game.maze.exit, game.position).exitVisible;
   return (
     <>
       <div className={`map-layer walker-light-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-        {!hidden ? <MazeSightLayer key={game.maze.seed} maze={game.maze} position={game.position} /> : null}
+        {!hidden ? <MazeSightLayer key={`${game.maze.seed}-${motionKey}`} maze={game.maze} position={game.position} transitionMs={moveDurationMs} /> : null}
       </div>
       <div className={`map-layer walker-structure-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-        <MazeStructure maze={game.maze} ariaLabel="Hidden maze with Walker light" className="walker-light-grid" showExit={exitVisible}>
-          <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
+        <MazeStructure maze={game.maze} ariaLabel="Maze in Walker View" className="walker-light-grid" showExit={exitVisible}>
+          <GridWalkerMarker key={`${game.maze.seed}-${motionKey}`} position={game.position} size={game.maze.cells.length} transitionMs={moveDurationMs} />
         </MazeStructure>
       </div>
     </>
   );
 }
 
-function SpectatorMap({ game, hidden }: { game: GameState; hidden: boolean }) {
+function SpectatorMap({ game, hidden, moveDurationMs, motionKey }: { game: GameState; hidden: boolean; moveDurationMs: number; motionKey: string }) {
   return (
     <div className={`map-layer spectator-map-layer ${hidden ? "is-hidden" : "is-visible"}`} aria-hidden={hidden}>
-      <MazeStructure maze={game.maze} ariaLabel="Complete maze spectator view" showStart showExit>
-        <GridWalkerMarker position={game.position} size={game.maze.cells.length} />
+      {!hidden ? <MazeSightLayer key={`${game.maze.seed}-${motionKey}-full`} maze={game.maze} position={game.position} transitionMs={moveDurationMs} /> : null}
+      <MazeStructure maze={game.maze} ariaLabel="Maze in Spectator View" className="spectator-maze-grid" showStart showExit>
+        <GridWalkerMarker key={`${game.maze.seed}-${motionKey}`} position={game.position} size={game.maze.cells.length} transitionMs={moveDurationMs} />
       </MazeStructure>
     </div>
   );
 }
 
-function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameState; showFullMap: boolean; showCaption?: boolean }) {
+const MazeViewport = memo(function MazeViewport({
+  game,
+  showFullMap,
+  showCaption = true,
+  moveDurationMs = 1_100,
+  motionKey = "continuous",
+}: {
+  game: GameState;
+  showFullMap: boolean;
+  showCaption?: boolean;
+  moveDurationMs?: number;
+  motionKey?: string;
+}) {
   return (
     <div className="map-viewport">
       <div className="map-stage-shell">
         <div className="map-stage maze-grid-stage">
-          <WalkerView game={game} hidden={showFullMap} />
-          <SpectatorMap game={game} hidden={!showFullMap} />
+          <WalkerView game={game} hidden={showFullMap} moveDurationMs={moveDurationMs} motionKey={motionKey} />
+          <SpectatorMap game={game} hidden={!showFullMap} moveDurationMs={moveDurationMs} motionKey={motionKey} />
         </div>
       </div>
       <div className="map-legend-slot" aria-hidden="true">
         <div className={`map-legend mode-legend ${showFullMap ? "is-hidden" : "is-visible"}`}>
-          <span><i className="legend-swatch swatch-light" />Walker light</span>
+          <span><i className="legend-swatch swatch-light" />Visible to Walker</span>
           <span><i className="legend-swatch swatch-hidden-area" />Hidden area</span>
         </div>
         <div className={`map-legend mode-legend ${showFullMap ? "is-visible" : "is-hidden"}`}>
@@ -522,9 +560,113 @@ function MazeViewport({ game, showFullMap, showCaption = true }: { game: GameSta
       {showCaption ? (
         <p className="map-mode-caption">
           {showFullMap
-            ? "Spectator mode: the complete map and actual position are never shown to Walker."
-            : "Darkness hides the maze; Walker light follows wall-blocked sightlines."}
+            ? "Spectator View reveals the complete map and actual position, which are never shown to Walker."
+            : "Walker View shows only what the agent can see through wall-blocked sightlines."}
         </p>
+      ) : null}
+    </div>
+  );
+});
+
+const ReplayLyricCueItem = memo(function ReplayLyricCueItem({
+  cue,
+  cueIndex,
+  cueState,
+  result,
+  renderContent,
+  reservedHeight,
+  onSelect,
+}: {
+  cue: ReplayLyricCue;
+  cueIndex: number;
+  cueState: ReplayLyricCueState;
+  result: MoveResult | null;
+  renderContent: boolean;
+  reservedHeight?: number;
+  onSelect: (turn: number, cueIndex: ReplayCueIndex) => void;
+}) {
+  return (
+    <section
+      className={`replay-lyric-cue ${cueState} is-${cue.kind}${renderContent ? "" : " is-virtual-placeholder"}`}
+      data-replay-cue={cueIndex}
+      style={!renderContent && reservedHeight ? { height: reservedHeight } : undefined}
+    >
+      {renderContent ? (
+        <button
+          className="replay-lyric-cue-button"
+          type="button"
+          aria-label={`Go to turn ${cue.turn}, ${cue.label.toLowerCase()}`}
+          aria-current={cueState === "is-active" ? "step" : undefined}
+          onClick={() => onSelect(cue.turn, cueIndex % 4 as ReplayCueIndex)}
+        >
+          <span><i>TURN {String(cue.turn).padStart(2, "0")}</i>{cue.label}</span>
+          {cue.kind === "copy" ? <p>{cue.content}</p> : <strong>{cue.content}</strong>}
+          {cue.kind === "action" ? (
+            <em className={result === "blocked" ? "is-blocked" : ""}>
+              {result === "blocked" ? "Blocked — stayed in place" : result === "moved" ? "Move succeeded" : "Awaiting move"}
+            </em>
+          ) : null}
+        </button>
+      ) : null}
+    </section>
+  );
+});
+
+function ReplaySpeedPicker({ value, onChange }: { value: PlaybackSpeed; onChange: (speed: PlaybackSpeed) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsOpen(false);
+      pickerRef.current?.querySelector<HTMLButtonElement>(".replay-speed-trigger")?.focus();
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePress);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePress);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className={`replay-speed-picker ${isOpen ? "is-open" : ""}`} ref={pickerRef}>
+      <button
+        className="replay-speed-trigger"
+        type="button"
+        aria-label={`Playback speed ${value} times`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-keyshortcuts="Shift+Comma Shift+Period"
+        title="Slower · Shift + <  /  Faster · Shift + >"
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <span>SPEED&nbsp;&nbsp;{value}×</span>
+      </button>
+      {isOpen ? (
+        <div className="replay-speed-menu" role="listbox" aria-label="Playback speed">
+          {PLAYBACK_SPEEDS.map((speed) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === speed}
+              className={value === speed ? "is-selected" : ""}
+              key={speed}
+              onClick={() => {
+                onChange(speed);
+                setIsOpen(false);
+              }}
+            >
+              <span>{speed}×</span>
+              {value === speed ? <i aria-hidden="true">●</i> : null}
+            </button>
+          ))}
+        </div>
       ) : null}
     </div>
   );
@@ -665,7 +807,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
         <div className="agent-name-wrap"><PanelLabel>WALKER VIEW</PanelLabel><h2>The Local Explorer</h2></div>
         <div className="card-head-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
-            {showFullMap ? "Show Walker light" : "Reveal full maze"}
+            {showFullMap ? "Walker View" : "Spectator View"}
           </button>
           <span className={`visibility-tag ${showFullMap ? "spectator-tag" : "local-tag"}`}>{showFullMap ? "SPECTATOR" : "LINE OF SIGHT"}</span>
         </div>
@@ -755,7 +897,7 @@ function LandingReplayStage({
         </div>
         <div className="landing-replay-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
-            {showFullMap ? "Show Walker light" : "Reveal full maze"}
+            {showFullMap ? "Walker View" : "Spectator View"}
           </button>
         </div>
       </header>
@@ -1165,43 +1307,59 @@ export function LiveLab() {
 export function ReplayHome() {
   const [showFullMap, setShowFullMap] = useState(false);
   const [replayRuns, setReplayRuns] = useState<ReplayRunSummary[]>([DEMO_REPLAY_SUMMARY]);
+  const [selectedReplayConfiguration, setSelectedReplayConfiguration] = useState(replayConfigurationKey(DEMO_REPLAY_SUMMARY));
   const [selectedReplayId, setSelectedReplayId] = useState(DEMO_REPLAY_DETAIL.run.id);
   const [playbackFrames, setPlaybackFrames] = useState<ReplayFrame[]>(DEMO_REPLAY_FRAMES);
   const [playbackIndex, setPlaybackIndex] = useState(0);
-  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(2);
+  const [settledPlaybackIndex, setSettledPlaybackIndex] = useState(0);
+  const [replayMotionRevision, setReplayMotionRevision] = useState(0);
+  const [activeCueIndex, setActiveCueIndex] = useState<ReplayCueIndex>(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [isReplayPlaying, setIsReplayPlaying] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
   const [replayLibraryError, setReplayLibraryError] = useState<string | null>(null);
-  const [isReplayLibraryExpanded, setIsReplayLibraryExpanded] = useState(true);
-  const initialReplayLoadedRef = useRef(true);
+  const initialReplayLoadedRef = useRef(false);
+  const lyricViewportRef = useRef<HTMLDivElement>(null);
+  const lyricTrackRef = useRef<HTMLDivElement>(null);
+  const [cueVirtualization, setCueVirtualization] = useState<{
+    replayId: string;
+    visibleCueIndexes: Set<number>;
+    cueHeights: Map<number, number>;
+  }>(() => ({ replayId: selectedReplayId, visibleCueIndexes: new Set(), cueHeights: new Map() }));
+  const reduceMotion = useSyncExternalStore(subscribeToReducedMotion, reducedMotionSnapshot, () => false);
 
-  const refreshReplayRuns = useCallback(async () => {
-    try {
-      const response = await fetch("/api/replays");
-      if (!response.ok) throw new Error("Could not load saved runs.");
-      const data = await response.json() as { runs?: ReplayRunSummary[] };
-      const storedRuns = data.runs ?? [];
-      setReplayRuns([DEMO_REPLAY_SUMMARY, ...storedRuns.filter((run) => run.id !== DEMO_REPLAY_SUMMARY.id)]);
-      setReplayLibraryError(null);
-    } catch (error) {
-      setReplayLibraryError(error instanceof Error ? error.message : "Could not load saved runs.");
-    }
-  }, []);
+  const seekPlaybackFrame = useCallback((index: number) => {
+    const nextIndex = Math.max(0, Math.min(index, playbackFrames.length - 1));
+    const nextFrame = playbackFrames[nextIndex];
+    setPlaybackIndex(nextIndex);
+    setSettledPlaybackIndex(nextIndex);
+    setReplayMotionRevision((revision) => revision + 1);
+    setActiveCueIndex(nextFrame?.game.phase === "walker_move" ? 0 : 3);
+  }, [playbackFrames]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => void refreshReplayRuns(), 0);
-    return () => window.clearTimeout(timer);
-  }, [refreshReplayRuns]);
+  const seekReplayCue = useCallback((turn: number, cueIndex: ReplayCueIndex) => {
+    const decisionFrameIndex = playbackFrames.findIndex((frame) => {
+      const thought = frame.game.history.at(-1);
+      return frame.game.phase === "walker_move" && thought?.turn === turn;
+    });
+    if (decisionFrameIndex < 0) return;
+    seekPlaybackFrame(decisionFrameIndex);
+    setActiveCueIndex(cueIndex);
+  }, [playbackFrames, seekPlaybackFrame]);
 
   const loadReplay = useCallback(async (runId: string) => {
     setSelectedReplayId(runId);
     setIsReplayPlaying(false);
     setPlaybackIndex(0);
+    setSettledPlaybackIndex(0);
+    setReplayMotionRevision((revision) => revision + 1);
+    setActiveCueIndex(0);
     if (!runId) {
       setPlaybackFrames([]);
       return;
     }
     setIsReplayLoading(true);
+    setPlaybackFrames([]);
     setReplayLibraryError(null);
     if (runId === DEMO_REPLAY_DETAIL.run.id) {
       setPlaybackFrames(DEMO_REPLAY_FRAMES);
@@ -1209,7 +1367,7 @@ export function ReplayHome() {
       return;
     }
     try {
-      const response = await fetch(`/api/replays?id=${encodeURIComponent(runId)}&compact=1`);
+      const response = await fetch(`/replay-data/runs/${encodeURIComponent(runId)}.json`);
       if (!response.ok) throw new Error("Could not load this replay.");
       const detail = await response.json() as ReplayDetail;
       setPlaybackFrames(buildReplayFrames(detail));
@@ -1222,192 +1380,436 @@ export function ReplayHome() {
     }
   }, []);
 
+  const refreshReplayRuns = useCallback(async () => {
+    try {
+      const response = await fetch("/replay-data/index.json");
+      if (!response.ok) throw new Error("Could not load published runs.");
+      const data = await response.json() as { runs?: ReplayRunSummary[] };
+      const publishedRuns = (data.runs ?? []).filter((run) => (run.max_turn ?? 0) > 0);
+      if (publishedRuns.length === 0) throw new Error("No published runs are available.");
+      setReplayRuns(publishedRuns);
+      setReplayLibraryError(null);
+      if (!initialReplayLoadedRef.current) {
+        initialReplayLoadedRef.current = true;
+        setSelectedReplayConfiguration(replayConfigurationKey(publishedRuns[0]));
+        await loadReplay(publishedRuns[0].id);
+      }
+    } catch (error) {
+      setReplayLibraryError(error instanceof Error ? error.message : "Could not load published runs.");
+    }
+  }, [loadReplay]);
+
   useEffect(() => {
-    if (initialReplayLoadedRef.current || replayRuns.length === 0) return;
-    initialReplayLoadedRef.current = true;
-    void loadReplay(replayRuns[0].id);
-  }, [loadReplay, replayRuns]);
+    const timer = window.setTimeout(() => void refreshReplayRuns(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshReplayRuns]);
 
   useEffect(() => {
     if (!isReplayPlaying || playbackFrames.length < 2) return undefined;
+    const currentFrame = playbackFrames[playbackIndex];
+    const hasDecision = currentFrame?.game.phase === "walker_move" && currentFrame.game.history.length > 0;
+
+    if (hasDecision && activeCueIndex < 3) {
+      const cueHoldMs = activeCueIndex === 2 ? 2200 : 1250;
+      const timer = window.setTimeout(
+        () => setActiveCueIndex((cue) => Math.min(3, cue + 1) as ReplayCueIndex),
+        cueHoldMs / playbackSpeed,
+      );
+      return () => window.clearTimeout(timer);
+    }
+
     if (playbackIndex >= playbackFrames.length - 1) {
       const timer = window.setTimeout(() => setIsReplayPlaying(false), 0);
       return () => window.clearTimeout(timer);
     }
     const timer = window.setTimeout(
-      () => setPlaybackIndex((index) => Math.min(index + 1, playbackFrames.length - 1)),
-      700 / playbackSpeed,
+      () => {
+        const nextIndex = Math.min(playbackIndex + 1, playbackFrames.length - 1);
+        const nextFrame = playbackFrames[nextIndex];
+        setPlaybackIndex(nextIndex);
+        setActiveCueIndex(nextFrame?.game.phase === "walker_move" ? 0 : 3);
+      },
+      REPLAY_FRAME_HOLD_MS / playbackSpeed,
     );
     return () => window.clearTimeout(timer);
-  }, [isReplayPlaying, playbackFrames.length, playbackIndex, playbackSpeed]);
+  }, [activeCueIndex, isReplayPlaying, playbackFrames, playbackIndex, playbackSpeed]);
 
   const playbackFrame = playbackFrames[playbackIndex] ?? null;
+  const settledPlaybackFrame = playbackFrames[settledPlaybackIndex] ?? playbackFrame;
   const isReplayMode = Boolean(selectedReplayId && playbackFrame);
   const selectedReplay = replayRuns.find((run) => run.id === selectedReplayId) ?? null;
-
-  function toggleReplayPlayback() {
-    if (!isReplayPlaying && playbackIndex >= playbackFrames.length - 1) setPlaybackIndex(0);
-    setIsReplayPlaying((value) => !value);
-  }
-
-  async function exportSelectedReplay() {
-    if (!selectedReplayId || !selectedReplay) return;
-    try {
-      let replay: unknown = DEMO_REPLAY_DETAIL;
-      if (selectedReplayId !== DEMO_REPLAY_DETAIL.run.id) {
-        const response = await fetch(`/api/replays?id=${encodeURIComponent(selectedReplayId)}`);
-        if (!response.ok) throw new Error("Could not export this replay.");
-        replay = await response.json();
-      }
-      const url = URL.createObjectURL(new Blob([JSON.stringify(replay, null, 2)], { type: "application/json" }));
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `echo-maze-solo-${selectedReplay.maze_seed}-${selectedReplay.id.slice(0, 8)}.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      setReplayLibraryError(error instanceof Error ? error.message : "Could not export this replay.");
+  const visibleReplayRuns = useMemo(
+    () => replayRuns.filter((run) => run.is_demo || (run.max_turn ?? 0) > 0),
+    [replayRuns],
+  );
+  const replayGroups = useMemo(() => {
+    const configurations = new Map<string, {
+      model: string;
+      reasoningEffort: string | null;
+      batches: Map<string, ReplayRunSummary[]>;
+    }>();
+    for (const run of visibleReplayRuns) {
+      const key = replayConfigurationKey(run);
+      const batchId = run.batch_id ?? run.id.split("--")[0] ?? "Published benchmark";
+      const configuration = configurations.get(key) ?? {
+        model: run.model,
+        reasoningEffort: run.reasoning_effort ?? null,
+        batches: new Map<string, ReplayRunSummary[]>(),
+      };
+      const batches = configuration.batches;
+      const runs = batches.get(batchId) ?? [];
+      runs.push(run);
+      batches.set(batchId, runs);
+      configurations.set(key, configuration);
     }
-  }
+    return [...configurations.entries()].map(([key, configuration]) => ({
+      key,
+      model: configuration.model,
+      reasoningEffort: configuration.reasoningEffort,
+      batches: [...configuration.batches.entries()].map(([batchId, runs]) => ({ batchId, runs })),
+    }));
+  }, [visibleReplayRuns]);
+  const selectedModelGroup = replayGroups.find((group) => group.key === selectedReplayConfiguration)
+    ?? replayGroups[0]
+    ?? null;
+  const currentThought = settledPlaybackFrame?.game.history.at(-1) ?? null;
+  const moveCount = settledPlaybackFrame
+    ? Math.max(0, settledPlaybackFrame.game.turn - settledPlaybackFrame.game.collisions)
+    : 0;
+  const replayThoughts = useMemo(() => {
+    const turns = new Map<number, WalkerTurn>();
+    for (const frame of playbackFrames) {
+      for (const thought of frame.game.history) turns.set(thought.turn, thought);
+    }
+    return [...turns.values()].sort((a, b) => a.turn - b.turn);
+  }, [playbackFrames]);
+  const lyricCues = useMemo<ReplayLyricCue[]>(() => replayThoughts.flatMap((thought) => {
+    const direction = DIRECTIONS.find((item) => item.key === thought.direction)?.label ?? "—";
+    return [
+      { turn: thought.turn, label: "ENVIRONMENT INPUT", content: thought.observationSummary, kind: "copy", result: null },
+      { turn: thought.turn, label: "MODEL ESTIMATE", content: `(${thought.believedPosition?.x ?? 0}, ${thought.believedPosition?.y ?? 0})`, kind: "estimate", result: null },
+      { turn: thought.turn, label: "NOTES", content: thought.reasoning, kind: "copy", result: null },
+      { turn: thought.turn, label: "ACTION", content: `MOVE ${direction.toUpperCase()}`, kind: "action", result: thought.result },
+    ];
+  }), [replayThoughts]);
+  const currentThoughtIndex = currentThought ? replayThoughts.findIndex((thought) => thought.turn === currentThought.turn) : -1;
+  const activeLyricCueIndex = currentThoughtIndex < 0 ? 0 : currentThoughtIndex * 4 + activeCueIndex;
+  const selectedRunIndex = visibleReplayRuns.findIndex((run) => run.id === selectedReplayId);
+  const playbackProgress = playbackFrames.length > 1 ? playbackIndex / (playbackFrames.length - 1) * 100 : 0;
+  const visibleCueIndexes = cueVirtualization.replayId === selectedReplayId
+    ? cueVirtualization.visibleCueIndexes
+    : EMPTY_CUE_INDEXES;
+  const cueHeights = cueVirtualization.replayId === selectedReplayId
+    ? cueVirtualization.cueHeights
+    : EMPTY_CUE_HEIGHTS;
+
+  useEffect(() => {
+    const viewport = lyricViewportRef.current;
+    const track = lyricTrackRef.current;
+    if (!viewport || !track || typeof IntersectionObserver === "undefined") return undefined;
+
+    const cueElements = [...track.querySelectorAll<HTMLElement>("[data-replay-cue]")];
+    const intersectionObserver = new IntersectionObserver((entries) => {
+      const enteredCueIndexes = entries.flatMap((entry) => {
+        const cueIndex = Number((entry.target as HTMLElement).dataset.replayCue);
+        return entry.isIntersecting && Number.isInteger(cueIndex) ? [cueIndex] : [];
+      });
+      if (enteredCueIndexes.length === 0) return;
+      const anchorCueIndex = enteredCueIndexes.reduce((sum, cueIndex) => sum + cueIndex, 0) / enteredCueIndexes.length;
+      setCueVirtualization((current) => {
+        const base = current.replayId === selectedReplayId
+          ? current
+          : { replayId: selectedReplayId, visibleCueIndexes: new Set<number>(), cueHeights: new Map<number, number>() };
+        const next = new Set(base.visibleCueIndexes);
+        for (const cueIndex of enteredCueIndexes) next.add(cueIndex);
+        if (next.size > REPLAY_MAX_OBSERVED_CUES) {
+          const closestCueIndexes = [...next]
+            .sort((left, right) => Math.abs(left - anchorCueIndex) - Math.abs(right - anchorCueIndex))
+            .slice(0, REPLAY_MAX_OBSERVED_CUES);
+          next.clear();
+          closestCueIndexes.forEach((cueIndex) => next.add(cueIndex));
+        }
+        const changed = next.size !== base.visibleCueIndexes.size
+          || [...next].some((cueIndex) => !base.visibleCueIndexes.has(cueIndex));
+        if (!changed) return base === current ? current : base;
+        return { ...base, visibleCueIndexes: next };
+      });
+    }, { root: viewport, rootMargin: "150% 0px" });
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver((entries) => {
+          const measuredHeights = new Map<number, number>();
+          for (const entry of entries) {
+            const cue = entry.target as HTMLElement;
+            if (!cue.firstElementChild) continue;
+            const cueIndex = Number(cue.dataset.replayCue);
+            const measuredHeight = entry.borderBoxSize[0]?.blockSize ?? cue.offsetHeight;
+            if (Number.isInteger(cueIndex)) measuredHeights.set(cueIndex, measuredHeight);
+          }
+          if (measuredHeights.size === 0) return;
+          setCueVirtualization((current) => {
+            const base = current.replayId === selectedReplayId
+              ? current
+              : { replayId: selectedReplayId, visibleCueIndexes: new Set<number>(), cueHeights: new Map<number, number>() };
+            const nextHeights = new Map(base.cueHeights);
+            let changed = false;
+            for (const [cueIndex, measuredHeight] of measuredHeights) {
+              if (nextHeights.get(cueIndex) === measuredHeight) continue;
+              nextHeights.set(cueIndex, measuredHeight);
+              changed = true;
+            }
+            if (!changed) return base === current ? current : base;
+            return { ...base, cueHeights: nextHeights };
+          });
+        });
+
+    cueElements.forEach((cue) => {
+      intersectionObserver.observe(cue);
+      resizeObserver?.observe(cue);
+    });
+    return () => {
+      intersectionObserver.disconnect();
+      resizeObserver?.disconnect();
+    };
+  }, [lyricCues.length, selectedReplayId]);
+
+  useEffect(() => {
+    if (!playbackFrame || settledPlaybackIndex === playbackIndex) return;
+    const settledFrame = playbackFrames[settledPlaybackIndex];
+    if (!settledFrame) {
+      const timer = window.setTimeout(() => setSettledPlaybackIndex(playbackIndex), 0);
+      return () => window.clearTimeout(timer);
+    }
+    const sameMaze = settledFrame.game.maze.seed === playbackFrame.game.maze.seed;
+    const moveDistance = Math.abs(settledFrame.game.position.c - playbackFrame.game.position.c)
+      + Math.abs(settledFrame.game.position.r - playbackFrame.game.position.r);
+    if (!sameMaze || moveDistance !== 1) {
+      const timer = window.setTimeout(() => setSettledPlaybackIndex(playbackIndex), 0);
+      return () => window.clearTimeout(timer);
+    }
+    const timer = window.setTimeout(
+      () => setSettledPlaybackIndex(playbackIndex),
+      REPLAY_MOVE_DURATION_MS / playbackSpeed,
+    );
+    return () => window.clearTimeout(timer);
+  }, [playbackFrame, playbackFrames, playbackIndex, playbackSpeed, settledPlaybackIndex]);
+
+  useEffect(() => {
+    const viewport = lyricViewportRef.current;
+    const cue = viewport?.querySelector<HTMLElement>(`[data-replay-cue="${activeLyricCueIndex}"]`);
+    if (!viewport || !cue) return;
+    const targetTop = cue.offsetTop - viewport.clientHeight * .42 + cue.clientHeight / 2;
+    const rapidlyAdvancing = isReplayPlaying && playbackSpeed >= 4;
+    viewport.scrollTo({ top: Math.max(0, targetTop), behavior: reduceMotion || rapidlyAdvancing ? "auto" : "smooth" });
+  }, [activeLyricCueIndex, isReplayPlaying, lyricCues.length, playbackSpeed, reduceMotion, selectedReplayId]);
+
+  const toggleReplayPlayback = useCallback(() => {
+    if (!isReplayPlaying && playbackIndex >= playbackFrames.length - 1) {
+      setPlaybackIndex(0);
+      setSettledPlaybackIndex(0);
+      setReplayMotionRevision((revision) => revision + 1);
+      setActiveCueIndex(0);
+    }
+    setIsReplayPlaying((value) => !value);
+  }, [isReplayPlaying, playbackFrames.length, playbackIndex]);
+
+  const selectAdjacentRun = useCallback((offset: -1 | 1) => {
+    const adjacentRun = visibleReplayRuns[selectedRunIndex + offset];
+    if (adjacentRun) {
+      setSelectedReplayConfiguration(replayConfigurationKey(adjacentRun));
+      void loadReplay(adjacentRun.id);
+    }
+  }, [loadReplay, selectedRunIndex, visibleReplayRuns]);
+
+  useEffect(() => {
+    const handleReplayShortcut = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, button, a, summary, [contenteditable='true']")) return;
+
+      if (event.code === "Space") {
+        if (!isReplayMode || playbackFrames.length < 2 || event.repeat) return;
+        event.preventDefault();
+        toggleReplayPlayback();
+        return;
+      }
+      if (event.shiftKey && (event.key === "<" || event.key === ">")) {
+        event.preventDefault();
+        const currentSpeedIndex = PLAYBACK_SPEEDS.indexOf(playbackSpeed);
+        const direction = event.key === "<" ? -1 : 1;
+        const nextSpeedIndex = Math.max(0, Math.min(PLAYBACK_SPEEDS.length - 1, currentSpeedIndex + direction));
+        setPlaybackSpeed(PLAYBACK_SPEEDS[nextSpeedIndex]);
+        return;
+      }
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const offset = event.key === "ArrowLeft" ? -1 : 1;
+      if (event.shiftKey) {
+        if (!event.repeat) selectAdjacentRun(offset);
+        return;
+      }
+      if (!isReplayMode || playbackFrames.length < 2) return;
+      seekPlaybackFrame(playbackIndex + offset);
+    };
+    window.addEventListener("keydown", handleReplayShortcut);
+    return () => window.removeEventListener("keydown", handleReplayShortcut);
+  }, [isReplayMode, playbackFrames.length, playbackIndex, playbackSpeed, seekPlaybackFrame, selectAdjacentRun, toggleReplayPlayback]);
 
   return (
-    <main className="echo-app replay-page replay-workspace-page">
+    <main className="echo-app replay-page replay-player-page">
       <AppNavigation currentPath="/replay" />
-      <div className={`replay-workspace ${isReplayLibraryExpanded ? "is-library-expanded" : "is-library-collapsed"}`}>
-        <div className="replay-left-column">
-          <section
-            id="replay-library-card"
-            className={`replay-console replay-home-console ${isReplayLibraryExpanded ? "is-expanded" : "is-collapsed"}`}
-            aria-label="Replay library"
-          >
-            <div className="replay-console-head">
-              <div><PanelLabel>REPLAY LIBRARY</PanelLabel><h2>Review any recorded run</h2></div>
-              <div className="replay-head-actions">
-                <span className="replay-state replay-recording">Replay only</span>
-              </div>
-            </div>
-            <div className={`replay-library-panel ${isReplayLibraryExpanded ? "is-visible" : ""}`} aria-hidden={!isReplayLibraryExpanded}>
-              <div className="replay-library-panel-inner">
-                <div className="replay-console-body">
-                  <div className="replay-library-actions">
-                    <button className="button button-export" type="button" onClick={() => void exportSelectedReplay()} disabled={!isReplayMode || isReplayLoading}>Export replay</button>
-                    <button className="button replay-refresh" type="button" onClick={() => void refreshReplayRuns()}>Refresh</button>
-                  </div>
-                  <div className="replay-controls">
-                    <label className="replay-field replay-run-field">
-                      <span>Run · {replayRuns.length} saved</span>
-                      <select value={selectedReplayId} onChange={(event) => void loadReplay(event.target.value)} disabled={isReplayLoading}>
-                        <option value="">Select a saved run</option>
-                        {replayRuns.map((run) => (
-                          <option value={run.id} key={run.id}>
-                            {run.maze_seed} · {run.status.toUpperCase()} · {run.max_turn ?? 0} turns{run.is_demo ? " · featured demo" : run.had_error ? " · error logged" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="replay-field replay-speed-field">
-                      <span>SPEED</span>
-                      <select value={playbackSpeed} onChange={(event) => setPlaybackSpeed(Number(event.target.value) as PlaybackSpeed)}>
-                        <option value={0.5}>0.5×</option>
-                        <option value={1}>1×</option>
-                        <option value={2}>2×</option>
-                        <option value={4}>4×</option>
-                        <option value={8}>8×</option>
-                      </select>
-                    </label>
-                    <div className="replay-buttons">
-                      <button className="button replay-restart" type="button" disabled={!isReplayMode || isReplayLoading} onClick={() => { setPlaybackIndex(0); setIsReplayPlaying(false); }}>↺ Restart</button>
-                      <button
-                        className={`button replay-play ${isReplayPlaying ? "is-playing" : ""}`}
-                        type="button"
-                        disabled={!isReplayMode || isReplayLoading || playbackFrames.length < 2}
-                        onClick={toggleReplayPlayback}
-                      >
-                        {isReplayLoading ? "Loading…" : isReplayPlaying ? "Ⅱ Pause" : "▶ Play"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="replay-timeline">
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.max(0, playbackFrames.length - 1)}
-                      value={Math.min(playbackIndex, Math.max(0, playbackFrames.length - 1))}
-                      onChange={(event) => { setPlaybackIndex(Number(event.target.value)); setIsReplayPlaying(false); }}
-                      disabled={!isReplayMode || playbackFrames.length < 2}
-                      aria-label="Replay position"
-                    />
-                    <div className="replay-timeline-meta">
-                      <span>{isReplayMode ? `${playbackIndex + 1} / ${playbackFrames.length}` : "Select a run to begin"}</span>
-                      <strong className={playbackFrame?.error ? "has-error" : selectedReplay?.status === "won" ? "is-won" : ""}>
-                        {playbackFrame?.error ?? playbackFrame?.note ?? "All outcomes are available for replay"}
-                      </strong>
-                      {isReplayMode ? <button type="button" onClick={() => void loadReplay("")}>Clear selection</button> : <span />}
-                    </div>
-                  </div>
-                  {replayLibraryError ? <p className="replay-library-error">{replayLibraryError}</p> : null}
-                </div>
-              </div>
-            </div>
-            <div className={`replay-collapsed-panel ${isReplayLibraryExpanded ? "" : "is-visible"}`} aria-hidden={isReplayLibraryExpanded}>
-              <div className="replay-collapsed-panel-inner">
-                <div className="replay-collapsed-summary">
-                  <div className="replay-collapsed-copy">
-                    <span>{selectedReplay ? `${selectedReplay.maze_seed} · ${selectedReplay.status.toUpperCase()} · ${selectedReplay.max_turn ?? 0} turns` : "No run selected"}</span>
-                    <span>{isReplayMode ? `Frame ${playbackIndex + 1} / ${playbackFrames.length}` : "Open library to choose a run"}</span>
-                  </div>
+      <section className="replay-player" aria-label="Replay player">
+        <aside className="replay-player-library">
+          <div className="replay-player-library-head">
+            <PanelLabel>REPLAY LIBRARY</PanelLabel>
+            <strong>{visibleReplayRuns.length} recorded runs</strong>
+          </div>
+          <div className="replay-run-list">
+            <nav className="replay-model-list" aria-label="Models">
+              <span className="replay-library-column-label">MODELS</span>
+              {replayGroups.map((modelGroup) => (
                   <button
-                    className={`button replay-collapsed-play ${isReplayPlaying ? "is-playing" : ""}`}
+                    className={modelGroup.key === selectedModelGroup?.key ? "is-selected" : ""}
                     type="button"
-                    tabIndex={isReplayLibraryExpanded ? -1 : 0}
-                    aria-label={isReplayPlaying ? "Pause replay" : "Play replay"}
-                    disabled={!isReplayMode || isReplayLoading || playbackFrames.length < 2}
-                    onClick={toggleReplayPlayback}
+                    key={modelGroup.key}
+                    onClick={() => setSelectedReplayConfiguration(modelGroup.key)}
+                    aria-pressed={modelGroup.key === selectedModelGroup?.key}
                   >
-                    {isReplayLoading ? "Loading…" : isReplayPlaying ? "Ⅱ Pause" : "▶ Play"}
+                    <strong>{modelGroup.model}</strong>
+                    <small>Reasoning · {modelGroup.reasoningEffort?.toUpperCase() ?? "NOT SPECIFIED"}</small>
                   </button>
-                </div>
+                ))}
+            </nav>
+            <div className="replay-model-runs">
+              <span className="replay-library-column-label">RUNS</span>
+              {selectedModelGroup?.batches.map((batch) => (
+                  <div className="replay-batch-group" key={batch.batchId}>
+                    {batch.runs.map((run) => {
+                      const mazeLabel = run.maze_seed.replace("echo-maze-bench-v0-", "").replace(/-(\d+)$/, " $1").replaceAll("-", " ");
+                      return (
+                        <button
+                          className={`replay-run-item ${run.id === selectedReplayId ? "is-selected" : ""}`}
+                          type="button"
+                          key={run.id}
+                          onClick={() => {
+                            setSelectedReplayConfiguration(replayConfigurationKey(run));
+                            void loadReplay(run.id);
+                          }}
+                          disabled={isReplayLoading}
+                          aria-current={run.id === selectedReplayId ? "true" : undefined}
+                        >
+                          <span className="replay-run-copy">
+                            <strong>{mazeLabel}</strong>
+                            <small>{run.status.replaceAll("_", " ")}</small>
+                          </span>
+                          <span className="replay-run-turns"><strong>{run.max_turn ?? 0}</strong><small>turns</small></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+            </div>
+          </div>
+          <button className="replay-library-refresh" type="button" onClick={() => void refreshReplayRuns()}>Refresh library</button>
+          {replayLibraryError ? <p className="replay-library-error">{replayLibraryError}</p> : null}
+        </aside>
+
+        <header className="replay-now-playing">
+          <div className="replay-now-playing-title">
+            <h1>{selectedReplay?.model ?? "Select a replay"}</h1>
+            <strong>{selectedReplay?.maze_seed ?? "No maze selected"}</strong>
+          </div>
+          <div className="replay-now-playing-meta">
+            <span>{selectedReplay ? `${selectedReplay.status.replaceAll("_", " ")} · shortest path ${playbackFrame?.game.maze.routeLength ?? "—"} moves` : "Choose a run from the library"}</span>
+          </div>
+        </header>
+
+        <div className="replay-player-main">
+          <div className="replay-player-main-inner">
+            {playbackFrame ? (
+              <section className="replay-player-maze" aria-label="Maze playback">
+                <MazeViewport
+                  game={playbackFrame.game}
+                  showFullMap={showFullMap}
+                  showCaption={false}
+                  moveDurationMs={REPLAY_MOVE_DURATION_MS / playbackSpeed}
+                  motionKey={`${selectedReplayId}-${replayMotionRevision}`}
+                />
+              </section>
+            ) : (
+              <section className="replay-player-maze replay-player-empty"><span>Select a run</span></section>
+            )}
+
+            <aside className="replay-player-output" aria-live="polite">
+          <div className="replay-output-heading">
+            <PanelLabel>AGENT OUTPUT</PanelLabel>
+            <span>{isReplayLoading ? "Loading…" : `Turn ${String(currentThought?.turn ?? 0).padStart(2, "0")}`}</span>
+          </div>
+          <div className="replay-output-metrics">
+            <div><span>TURN</span><strong>{String(settledPlaybackFrame?.game.turn ?? 0).padStart(2, "0")}</strong></div>
+            <div><span>MOVES</span><strong>{String(moveCount).padStart(2, "0")}</strong></div>
+            <div><span>WALL HITS</span><strong>{String(settledPlaybackFrame?.game.collisions ?? 0).padStart(2, "0")}</strong></div>
+          </div>
+          <div className="replay-lyric-window">
+            <div className="replay-lyric-viewport" ref={lyricViewportRef}>
+              <div className="replay-lyric-track" ref={lyricTrackRef}>
+                {lyricCues.length === 0 ? (
+                  <section className="replay-lyric-cue is-active is-copy" data-replay-cue="0">
+                    <span><i>01</i>ENVIRONMENT INPUT</span>
+                    <p>Waiting for the first observation.</p>
+                  </section>
+                ) : lyricCues.map((cue, cueIndex) => (
+                  <ReplayLyricCueItem
+                    cue={cue}
+                    cueIndex={cueIndex}
+                    cueState={cueIndex === activeLyricCueIndex ? "is-active" : cueIndex < activeLyricCueIndex ? "is-past" : "is-future"}
+                    result={cue.kind !== "action" || !currentThought
+                      ? null
+                      : cue.turn < currentThought.turn
+                        ? cue.result
+                        : cue.turn === currentThought.turn
+                          ? currentThought.result
+                          : null}
+                    renderContent={visibleCueIndexes.has(cueIndex) || Math.abs(cueIndex - activeLyricCueIndex) <= REPLAY_CUE_RENDER_RADIUS}
+                    reservedHeight={cueHeights.get(cueIndex)}
+                    onSelect={seekReplayCue}
+                    key={`${cue.turn}-${cue.label}`}
+                  />
+                ))}
               </div>
             </div>
-          </section>
-
-          {playbackFrame ? (
-            <>
-              <div className="replay-card-toggle-gap">
-                <button
-                  className={`replay-library-toggle ${isReplayLibraryExpanded ? "is-expanded" : "is-collapsed"}`}
-                  type="button"
-                  aria-controls="replay-library-card"
-                  aria-expanded={isReplayLibraryExpanded}
-                  aria-label={isReplayLibraryExpanded ? "Collapse replay library" : "Expand replay library"}
-                  onClick={() => setIsReplayLibraryExpanded((value) => !value)}
-                >
-                  <span aria-hidden="true">
-                    <svg viewBox="0 0 20 20" focusable="false">
-                      <path d="m4 7 6 6 6-6" />
-                    </svg>
-                  </span>
-                </button>
-              </div>
-              <ThoughtCard game={playbackFrame.game} />
-            </>
-          ) : null}
+          </div>
+            </aside>
+          </div>
         </div>
 
-        {playbackFrame ? (
-          <WalkerCard
-            game={playbackFrame.game}
-            showFullMap={showFullMap}
-            onToggleFullMap={() => setShowFullMap((value) => !value)}
-          />
-        ) : (
-          <section className="replay-empty-state replay-view-empty" aria-live="polite">
-            <PanelLabel>NO RUN SELECTED</PanelLabel>
-            <h2>Select a saved run to inspect</h2>
-            <p>The home view is read-only. Choose a recorded run above to scrub its observations, decisions, and outcomes.</p>
-          </section>
-        )}
-      </div>
+        <footer className="replay-player-controls">
+          <div className="replay-player-timeline">
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, playbackFrames.length - 1)}
+              value={Math.min(playbackIndex, Math.max(0, playbackFrames.length - 1))}
+              onChange={(event) => seekPlaybackFrame(Number(event.target.value))}
+              disabled={!isReplayMode || playbackFrames.length < 2}
+              aria-label="Replay position"
+              aria-keyshortcuts="ArrowLeft ArrowRight"
+              style={{ "--replay-progress": `${playbackProgress}%` } as CSSProperties}
+            />
+            <div><span>{playbackFrame?.note ?? "Select a run to begin"}</span><strong>{isReplayMode ? `${playbackIndex + 1} / ${playbackFrames.length}` : "0 / 0"}</strong></div>
+          </div>
+          <div className="replay-transport">
+            <button type="button" onClick={() => selectAdjacentRun(-1)} disabled={selectedRunIndex <= 0} aria-label="Previous run" aria-keyshortcuts="Shift+ArrowLeft" title="Previous run · Shift + ←"><span className="replay-run-skip-icon" aria-hidden="true">◀◀</span></button>
+            <button className="replay-transport-play" type="button" onClick={toggleReplayPlayback} disabled={!isReplayMode || playbackFrames.length < 2} aria-label={isReplayPlaying ? "Pause replay" : "Play replay"} aria-keyshortcuts="Space" title="Play or pause · Space">{isReplayPlaying ? "Ⅱ" : "▶"}</button>
+            <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run" aria-keyshortcuts="Shift+ArrowRight" title="Next run · Shift + →"><span className="replay-run-skip-icon" aria-hidden="true">▶▶</span></button>
+          </div>
+          <div className="replay-current-run"><strong>{selectedReplay?.maze_seed ?? "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
+          <div className="replay-player-options">
+            <ReplaySpeedPicker value={playbackSpeed} onChange={setPlaybackSpeed} />
+            <button type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>{showFullMap ? "Walker View" : "Spectator View"}</button>
+          </div>
+        </footer>
+      </section>
 
     </main>
   );

@@ -77,20 +77,24 @@ test("server-renders the complete replay workspace", async () => {
   const html = await response.text();
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(text, /REPLAY LIBRARY/);
-  assert.match(text, /Review any recorded run/);
+  assert.match(text, /recorded runs/);
+  assert.doesNotMatch(text, /NOW PLAYING/);
+  assert.match(text, /gpt-5\.6-luna/);
   assert.match(text, /AGENT OUTPUT/);
-  assert.match(text, /Walker(?:&#x27;|&apos;|')s reasoning log/);
-  assert.match(text, /WALKER VIEW/);
-  assert.match(text, /The Local Explorer/);
+  assert.match(text, /ENVIRONMENT INPUT/);
+  assert.match(text, /MODEL ESTIMATE/);
   assert.match(text, /ECHO-BENCH-V0-02/);
-  assert.match(text, /STEPS TAKEN/);
-  assert.match(text, /COORDINATE STATUS/);
+  assert.match(text, /WALL HITS/);
+  assert.match(text, /shortest path 26 moves/);
   assert.doesNotMatch(text, /OUTCOME/);
   assert.match(html, /app-navigation/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
-  assert.match(text, /featured demo/);
-  assert.match(text, /Darkness hides the maze; Walker light follows wall-blocked sightlines\./);
-  assert.match(html, /replay-play/);
+  assert.match(text, /Spectator View/);
+  assert.match(html, /replay-transport-play/);
+  assert.match(html, /replay-speed-picker/);
+  assert.match(html, /aria-keyshortcuts="Space"/);
+  assert.match(html, /aria-keyshortcuts="Shift\+ArrowLeft"/);
+  assert.match(html, /aria-keyshortcuts="Shift\+Comma Shift\+Period"/);
   assert.doesNotMatch(text, /Watch one agent remember what it saw/);
   assert.doesNotMatch(html, /class="footer-note"/);
 });
@@ -117,12 +121,14 @@ test("published benchmark index is valid and its runs are replayable", async () 
   assert.ok(index.runs.every((run) => run.max_turn > 0));
   assert.ok(index.runs.every((run) => run.playback_duration_ms > 0));
   assert.ok(index.runs.every((run) => typeof run.featured === "boolean"));
+  assert.ok(index.runs.every((run) => run.reasoning_effort === "low"));
   assert.deepEqual(index.runs.map((run) => run.homepage_order), index.runs.map((_run, index) => index + 1));
 
   const runId = index.runs[0]?.id;
   if (!runId) return;
   const detail = JSON.parse(await readFile(new URL(`../public/replay-data/runs/${runId}.json`, import.meta.url), "utf8"));
   assert.equal(detail.source, "benchmark");
+  assert.equal(detail.benchmark.reasoningEffort, "low");
   assert.equal(detail.run.id, runId);
   assert.equal(detail.run.maze.cells.length, 9);
   assert.ok(detail.events.some((event) => event.type === "agent_request"));
@@ -179,8 +185,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(shared, /type GamePhase = "walker_think" \| "walker_move"/);
   assert.match(shared, /recordReplay/);
   assert.match(shared, /Export replay/);
-  assert.match(shared, /Reveal full maze/);
-  assert.match(shared, /Show Walker light/);
+  assert.match(shared, /Spectator View/);
+  assert.match(shared, /Walker View/);
   assert.match(shared, /animationKey=\{thought\.turn\}/);
   // Reduced-motion CSS removes transitions, but the recorded content must
   // continue advancing because the landing replay has no playback controls.
@@ -195,8 +201,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(replayUi, /HomeReplayChannel/);
   assert.match(replayUi, /ReplayLibrary/);
   assert.match(replayUi, /ReplayDetailViewer/);
-  assert.match(replayUi, /Reveal full maze/);
-  assert.match(replayUi, /Show Walker light/);
+  assert.match(replayUi, /Spectator View/);
+  assert.match(replayUi, /Walker View/);
   assert.match(mazeSight, /maze-sight-walls/);
   assert.match(mazeSight, /walker-wall-gradient/);
   assert.match(mazeSight, /mergeCollinearWalls/);
