@@ -52,6 +52,7 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(text, /Partial observability/);
   assert.match(html, /app-navigation/);
   assert.match(html, /aria-label="Open navigation"/);
+  assert.match(html, /Drag to reposition/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
   assert.match(html, /landing-agent-output/);
   assert.match(html, /landing-model-action/);

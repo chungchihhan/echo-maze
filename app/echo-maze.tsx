@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   DIRECTIONS,
   MIN_ROUTE_LENGTH,
@@ -373,12 +373,89 @@ function BrandMark({ inverse = false }: { inverse?: boolean }) {
 
 const GITHUB_REPOSITORY_URL = "https://github.com/chungchihhan/echo-maze";
 const LANDING_PATH = "/";
+const NAVIGATION_DOCK_STORAGE_KEY = "echo-maze-navigation-dock-v1";
+type NavigationDock = { edge: "top" | "right" | "bottom" | "left"; ratio: number };
+type NavigationPosition = { x: number; y: number; popoverX?: number };
+
+function navigationPosition(dock: NavigationDock, viewportWidth: number, viewportHeight: number, size: number) {
+  const margin = viewportWidth <= 680 ? 12 : 16;
+  const minX = margin;
+  const minY = margin;
+  const maxX = Math.max(minX, viewportWidth - size - margin);
+  const maxY = Math.max(minY, viewportHeight - size - margin);
+  const ratio = Math.max(0, Math.min(1, dock.ratio));
+  if (dock.edge === "top" || dock.edge === "bottom") {
+    const x = minX + (maxX - minX) * ratio;
+    const popoverWidth = Math.min(320, viewportWidth - 28);
+    const centeredOffset = size / 2 - popoverWidth / 2;
+    const minimumOffset = 14 - x;
+    const maximumOffset = viewportWidth - 14 - popoverWidth - x;
+    return {
+      x,
+      y: dock.edge === "top" ? minY : maxY,
+      popoverX: Math.max(minimumOffset, Math.min(maximumOffset, centeredOffset)),
+    };
+  }
+  if (dock.edge === "right") return { x: maxX, y: minY + (maxY - minY) * ratio };
+  return { x: minX, y: minY + (maxY - minY) * ratio };
+}
+
+function nearestNavigationDock(position: NavigationPosition, viewportWidth: number, viewportHeight: number, size: number): NavigationDock {
+  const margin = viewportWidth <= 680 ? 12 : 16;
+  const minX = margin;
+  const minY = margin;
+  const maxX = Math.max(minX, viewportWidth - size - margin);
+  const maxY = Math.max(minY, viewportHeight - size - margin);
+  const x = Math.max(minX, Math.min(maxX, position.x));
+  const y = Math.max(minY, Math.min(maxY, position.y));
+  const distances = [
+    ["top", y - minY],
+    ["right", maxX - x],
+    ["bottom", maxY - y],
+    ["left", x - minX],
+  ] as const;
+  const edge = distances.reduce((closest, candidate) => candidate[1] < closest[1] ? candidate : closest)[0];
+  const horizontalRatio = (x - minX) / Math.max(1, maxX - minX);
+  const verticalRatio = (y - minY) / Math.max(1, maxY - minY);
+  return { edge, ratio: edge === "top" || edge === "bottom" ? horizontalRatio : verticalRatio };
+}
 
 function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isBrandVisible, setIsBrandVisible] = useState(currentPath === "/");
+  const [dock, setDock] = useState<NavigationDock | null>(null);
+  const [position, setPosition] = useState<NavigationPosition | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const navigationRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; x: number; y: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const placeNavigation = useCallback((nextDock: NavigationDock) => {
+    const size = toggleRef.current?.getBoundingClientRect().width ?? (window.innerWidth <= 680 ? 44 : 48);
+    setPosition(navigationPosition(nextDock, window.innerWidth, window.innerHeight, size));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const storedDock = JSON.parse(window.localStorage.getItem(NAVIGATION_DOCK_STORAGE_KEY) ?? "null") as NavigationDock | null;
+        if (!storedDock || !["top", "right", "bottom", "left"].includes(storedDock.edge) || !Number.isFinite(storedDock.ratio)) return;
+        setDock(storedDock);
+        placeNavigation(storedDock);
+      } catch {
+        // Ignore invalid or unavailable local storage and keep the default placement.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [placeNavigation]);
+
+  useEffect(() => {
+    if (!dock) return undefined;
+    const handleResize = () => placeNavigation(dock);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [dock, placeNavigation]);
 
   useEffect(() => {
     if (currentPath !== "/") return undefined;
@@ -416,10 +493,95 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
     };
   }, [closeNavigation, isOpen]);
 
+  const handleNavigationDragStart = useCallback((event: ReactPointerEvent<HTMLButtonElement> | ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    const bounds = navigationRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    dragRef.current = {
+      pointerId: "pointerId" in event ? event.pointerId : -1,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: bounds.left,
+      originY: bounds.top,
+      x: bounds.left,
+      y: bounds.top,
+      moved: false,
+    };
+  }, []);
+
+  const handleNavigationPointerMove = useCallback((event: { pointerId?: number; clientX: number; clientY: number }) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== (event.pointerId ?? -1)) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      setIsDragging(true);
+      setIsOpen(false);
+    }
+    const size = toggleRef.current?.getBoundingClientRect().width ?? 48;
+    const margin = window.innerWidth <= 680 ? 12 : 16;
+    drag.x = Math.max(margin, Math.min(window.innerWidth - size - margin, drag.originX + deltaX));
+    drag.y = Math.max(margin, Math.min(window.innerHeight - size - margin, drag.originY + deltaY));
+    setPosition({ x: drag.x, y: drag.y });
+  }, []);
+
+  const finishNavigationDrag = useCallback((pointerId: number) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    dragRef.current = null;
+    if (!drag.moved) return;
+    const size = toggleRef.current?.getBoundingClientRect().width ?? 48;
+    const nextDock = nearestNavigationDock({ x: drag.x, y: drag.y }, window.innerWidth, window.innerHeight, size);
+    setDock(nextDock);
+    placeNavigation(nextDock);
+    setIsDragging(false);
+    suppressClickRef.current = true;
+    try {
+      window.localStorage.setItem(NAVIGATION_DOCK_STORAGE_KEY, JSON.stringify(nextDock));
+    } catch {
+      // The button still docks for this session when storage is unavailable.
+    }
+    window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+  }, [placeNavigation]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => handleNavigationPointerMove(event);
+    const handlePointerEnd = (event: PointerEvent) => finishNavigationDrag(event.pointerId);
+    const handleMouseMove = (event: MouseEvent) => handleNavigationPointerMove(event);
+    const handleMouseEnd = () => finishNavigationDrag(-1);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseEnd);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseEnd);
+    };
+  }, [finishNavigationDrag, handleNavigationPointerMove]);
+
   const linkTabIndex = isOpen ? 0 : -1;
+  const popoverHorizontal = dock?.edge === "right" || ((dock?.edge === "top" || dock?.edge === "bottom") && dock.ratio > .5) ? "right" : "left";
+  const popoverVertical = dock?.edge === "bottom" || ((dock?.edge === "left" || dock?.edge === "right") && dock.ratio > .5) ? "up" : "down";
 
   return (
-    <div className={`app-navigation ${isOpen ? "is-open" : ""} ${isBrandVisible ? "" : "is-brand-offscreen"}`} ref={navigationRef}>
+    <div
+      className={`app-navigation ${isOpen ? "is-open" : ""} ${isBrandVisible ? "" : "is-brand-offscreen"} ${position ? "is-user-positioned" : ""} ${isDragging ? "is-dragging" : ""}`}
+      data-dock-edge={dock?.edge}
+      data-popover-horizontal={popoverHorizontal}
+      data-popover-vertical={popoverVertical}
+      ref={navigationRef}
+      style={position ? {
+        left: position.x,
+        top: position.y,
+        "--nav-popover-x": `${position.popoverX ?? 0}px`,
+      } as CSSProperties : undefined}
+    >
       <button
         ref={toggleRef}
         className="nav-menu-toggle"
@@ -427,7 +589,13 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
         aria-expanded={isOpen}
         aria-controls="echo-navigation"
         aria-label={isOpen ? "Close navigation" : "Open navigation"}
-        onClick={() => setIsOpen((value) => !value)}
+        title="Drag to reposition · Click to open menu"
+        onClick={() => {
+          if (suppressClickRef.current) return;
+          setIsOpen((value) => !value);
+        }}
+        onPointerDown={handleNavigationDragStart}
+        onMouseDown={handleNavigationDragStart}
       >
         <BrandMark inverse />
       </button>
