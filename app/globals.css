@@ -503,6 +503,36 @@ h1 em {
   text-underline-offset: .12em;
 }
 
+.hero-typewriter-title {
+  min-height: 3.15em;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity .48s ease, transform .48s ease;
+  text-wrap: wrap;
+}
+
+.hero-typewriter-title.is-fading-out {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.hero-typewriter-supporting { min-height: 3em; }
+
+.hero-typewriter-caret {
+  display: inline-block;
+  width: .075em;
+  height: .82em;
+  margin-left: .08em;
+  background: currentColor;
+  vertical-align: -.06em;
+  animation: hero-typewriter-blink .8s steps(1, end) infinite;
+}
+
+@keyframes hero-typewriter-blink {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: 0; }
+}
+
 .hero-replay-link {
   display: inline-flex;
   width: max-content;
@@ -2480,6 +2510,7 @@ h1 em {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-snap-type: none; }
+  .hero-typewriter-caret { display: none; }
   *, *::before, *::after {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;

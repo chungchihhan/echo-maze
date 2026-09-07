@@ -33,6 +33,9 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(html, /<title>Echo Maze — One Agent, Hidden Maze<\/title>/i);
   assert.match(html, /echo-maze-icon\.png/);
   assert.match(text, /ECHO MAZE/);
+  assert.match(text, /Maze exploration without a map/);
+  assert.match(text, /A benchmark for memory-driven AI agents/);
+  assert.doesNotMatch(text, /Watch one agent remember what it saw/);
   assert.match(text, /RECORDED WALKER RUN/);
   assert.match(text, /One turn at a time/);
   assert.match(text, /ECHO-BENCH-V0-02/);

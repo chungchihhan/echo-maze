@@ -627,6 +627,83 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
 
 type PageMode = "replay" | "lab";
 
+const HERO_MESSAGES = [
+  {
+    headline: "Maze exploration without a map.",
+    supporting: "A benchmark for memory-driven AI agents.",
+  },
+  {
+    headline: "Find a way through the unseen.",
+    supporting: "One corridor, one decision, one memory at a time.",
+  },
+] as const;
+
+type HeroTypingPhase = "holding" | "deleting" | "typing";
+
+function useHeroTypewriter(active: boolean) {
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [typingState, setTypingState] = useState(() => ({
+    messageIndex: 0,
+    visibleCharacters: HERO_MESSAGES[0].supporting.length,
+    phase: "holding" as HeroTypingPhase,
+  }));
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(query.matches);
+    updatePreference();
+    query.addEventListener("change", updatePreference);
+    return () => query.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (!active || reducedMotion) return;
+    let delay = 48;
+
+    if (typingState.phase === "holding") {
+      delay = 2800;
+    } else if (typingState.phase === "deleting") {
+      delay = 24;
+    }
+
+    const timer = window.setTimeout(() => {
+      setTypingState((current) => {
+        if (current.phase === "holding") return { ...current, phase: "deleting" };
+        if (current.phase === "deleting") {
+          if (current.visibleCharacters > 0) {
+            return { ...current, visibleCharacters: current.visibleCharacters - 1 };
+          }
+          return {
+            messageIndex: (current.messageIndex + 1) % HERO_MESSAGES.length,
+            visibleCharacters: 0,
+            phase: "typing",
+          };
+        }
+
+        const currentMessage = HERO_MESSAGES[current.messageIndex];
+        if (current.visibleCharacters < currentMessage.supporting.length) {
+          return { ...current, visibleCharacters: current.visibleCharacters + 1 };
+        }
+        return { ...current, phase: "holding" };
+      });
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [active, reducedMotion, typingState]);
+
+  const message = HERO_MESSAGES[typingState.messageIndex];
+  const visibleCharacters = active && !reducedMotion
+    ? typingState.visibleCharacters
+    : message.supporting.length;
+  return {
+    headline: message.headline,
+    supporting: message.supporting,
+    visibleSupporting: message.supporting.slice(0, visibleCharacters),
+    headlineIsFadingOut: active && !reducedMotion && typingState.phase === "deleting",
+    showCursor: active && !reducedMotion,
+  };
+}
+
 function Masthead({ mode, onNewMaze }: { mode: PageMode; onNewMaze?: () => void }) {
   const isLab = mode === "lab";
   return (
@@ -647,6 +724,7 @@ function Masthead({ mode, onNewMaze }: { mode: PageMode; onNewMaze?: () => void 
 
 function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showReplayLink?: boolean }) {
   const isLab = mode === "lab";
+  const heroCopy = useHeroTypewriter(!isLab);
   return (
     <section className="intro-row solo-intro">
       <div className="intro-panel intro-panel-light">
@@ -657,13 +735,26 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
           </div>
         ) : null}
         {isLab ? <p className="eyebrow">CONVERSATION-ONLY MEMORY</p> : null}
-        <h1>{isLab ? <>Can one agent remember <em>the maze it cannot see?</em></> : <>Watch one agent <em>remember what it saw.</em></>}</h1>
+        {isLab ? (
+          <h1>Can one agent remember <em>the maze it cannot see?</em></h1>
+        ) : (
+          <h1 className={`hero-typewriter-title${heroCopy.headlineIsFadingOut ? " is-fading-out" : ""}`}>
+            {heroCopy.headline}
+          </h1>
+        )}
         {showReplayLink ? <a className="hero-replay-link" href="/replay">Open replay workspace <span aria-hidden="true">↗</span></a> : null}
       </div>
       <div className="intro-panel intro-panel-blue">
         <HeroMaze mazes={HERO_MAZES} />
         <div className="intro-note">
-          <p>{isLab ? <>No map. No route tool. No notebook.<br />Only observations, decisions, and outcomes from this run.</> : <>Replay the decisions, outcomes, and memory<br />from a completed Walker run.</>}</p>
+          {isLab ? (
+            <p>No map. No route tool. No notebook.<br />Only observations, decisions, and outcomes from this run.</p>
+          ) : (
+            <p className="hero-typewriter-supporting" aria-label={heroCopy.supporting}>
+              {heroCopy.visibleSupporting}
+              {heroCopy.showCursor ? <span className="hero-typewriter-caret" aria-hidden="true" /> : null}
+            </p>
+          )}
         </div>
       </div>
     </section>
