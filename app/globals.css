@@ -2263,7 +2263,8 @@ h1 em {
 @media (max-width: 560px) {
   .echo-app.replay-player-page { width: calc(100% - 16px); }
   .replay-player-library-head { min-height: 82px; padding: 16px 14px 12px 62px; }
-  .replay-now-playing { padding-right: 14px; padding-left: 62px; }
+  .replay-now-playing { padding-inline: 14px; }
+  .echo-app.replay-player-page:has(.app-navigation[data-overlaps-replay-title="true"]) .replay-now-playing { padding-left: 62px; }
   .replay-now-playing-meta strong,
   .replay-now-playing-meta span { white-space: normal; }
   .replay-run-list { grid-template-columns: 1fr; overflow-y: auto; }

@@ -568,11 +568,13 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   const linkTabIndex = isOpen ? 0 : -1;
   const popoverHorizontal = dock?.edge === "right" || ((dock?.edge === "top" || dock?.edge === "bottom") && dock.ratio > .5) ? "right" : "left";
   const popoverVertical = dock?.edge === "bottom" || ((dock?.edge === "left" || dock?.edge === "right") && dock.ratio > .5) ? "up" : "down";
+  const overlapsReplayTitle = currentPath === "/replay" && (!position || (position.x < 70 && position.y < 150));
 
   return (
     <div
       className={`app-navigation ${isOpen ? "is-open" : ""} ${isBrandVisible ? "" : "is-brand-offscreen"} ${position ? "is-user-positioned" : ""} ${isDragging ? "is-dragging" : ""}`}
       data-dock-edge={dock?.edge}
+      data-overlaps-replay-title={overlapsReplayTitle ? "true" : undefined}
       data-popover-horizontal={popoverHorizontal}
       data-popover-vertical={popoverVertical}
       ref={navigationRef}
