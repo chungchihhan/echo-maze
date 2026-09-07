@@ -141,8 +141,16 @@ function createWallMaterial(three: typeof import("three")) {
 
       void main() {
         vUv = uv;
-        vNormal = normalize(normalMatrix * normal);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec3 transformedNormal = normal;
+        vec4 transformedPosition = vec4(position, 1.0);
+
+        #ifdef USE_INSTANCING
+          transformedNormal = mat3(instanceMatrix) * transformedNormal;
+          transformedPosition = instanceMatrix * transformedPosition;
+        #endif
+
+        vNormal = normalize(normalMatrix * transformedNormal);
+        gl_Position = projectionMatrix * modelViewMatrix * transformedPosition;
       }
     `,
     fragmentShader: `

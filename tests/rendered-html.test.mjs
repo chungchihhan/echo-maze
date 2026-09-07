@@ -141,13 +141,14 @@ test("published benchmark index is valid and its runs are replayable", async () 
 });
 
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
-  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
+  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, heroMaze, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/echo-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay-ui.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/maze-sight.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/maze-structure.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/hero-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/demo-replay.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/demo-replay.json", import.meta.url), "utf8"),
@@ -213,6 +214,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(mazeSight, /pointIsOccluded/);
   assert.doesNotMatch(mazeSight, /clipPath/);
   assert.doesNotMatch(mazeStructure, /showWallLight|wallLightOpacity|maze-structure-walls-lit/);
+  assert.match(heroMaze, /transformedPosition = instanceMatrix \* transformedPosition/);
+  assert.match(heroMaze, /transformedNormal = mat3\(instanceMatrix\) \* transformedNormal/);
   assert.match(styles, /maze-structure-walls-base/);
   assert.match(mazeSight, /visibilityPolygon/);
   assert.match(mazeSight, /raySegmentIntersection/);
