@@ -1233,6 +1233,19 @@ function BenchmarkIntro() {
   );
 }
 
+function LandingFooter() {
+  return (
+    <footer className="landing-footer">
+      <strong>ECHO MAZE</strong>
+      <span>Where AI memory finds its way.</span>
+      <nav aria-label="Footer navigation">
+        <a href="/replay">Replay</a>
+        <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </footer>
+  );
+}
+
 export function LandingPage() {
   const [showFullMap, setShowFullMap] = useState(false);
   const [landingTurns, setLandingTurns] = useState<LandingReplayTurn[]>(DEMO_LANDING_REPLAY_TURNS);
@@ -1346,6 +1359,7 @@ export function LandingPage() {
       </section>
 
       <BenchmarkIntro />
+      <LandingFooter />
     </main>
   );
 }

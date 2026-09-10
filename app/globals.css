@@ -1273,6 +1273,31 @@ h1 em {
 .benchmark-link span { transition: transform .2s ease; }
 .benchmark-link:hover span { transform: translateX(3px); }
 
+.landing-footer {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+  width: min(100%, 1280px);
+  margin-inline: auto;
+  padding: 28px 0 40px;
+  border-top: 1px solid rgb(240 247 255 / 35%);
+  color: var(--ice);
+  font-size: var(--text-body-sm);
+}
+
+.landing-footer strong { font-weight: 500; letter-spacing: .08em; }
+.landing-footer > span { color: rgb(240 247 255 / 72%); text-align: center; }
+
+.landing-footer nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 24px;
+}
+
+.landing-footer a { color: inherit; text-underline-offset: 4px; }
+.landing-footer a:hover { text-decoration: underline; }
+
 .card-head {
   display: flex;
   align-items: center;
@@ -2492,6 +2517,8 @@ h1 em {
   .benchmark-rules { grid-template-columns: 1fr; padding: 0 20px; }
   .benchmark-rules li { padding: 24px 0; }
   .benchmark-rules li + li { padding-left: 0; border-top: 1px solid var(--mist); border-left: 0; }
+  .landing-footer { grid-template-columns: 1fr auto; gap: 10px 20px; padding: 24px 0 32px; }
+  .landing-footer > span { grid-column: 1 / -1; grid-row: 2; text-align: left; }
   .control-bar { align-items: flex-start; flex-direction: column; }
   .mode-pill { flex: 1; }
   h1 { font-size: clamp(32px, 9vw, 56px); }

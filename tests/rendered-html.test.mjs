@@ -53,6 +53,9 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(text, /THE BENCHMARK/);
   assert.match(text, /The exit is only half the story/);
   assert.match(text, /Partial observability/);
+  assert.match(html, /class="landing-footer"/);
+  assert.match(html, /aria-label="Footer navigation"/);
+  assert.match(text, /Where AI memory finds its way/);
   assert.match(html, /app-navigation/);
   assert.match(html, /aria-label="Open navigation"/);
   assert.match(html, /Drag to reposition/);
