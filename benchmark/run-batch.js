@@ -9,7 +9,7 @@
  *
  * Usage:
  *   node benchmark/run-batch.js --dry-run [--suite-seed <seed>] [--mazes-per-tier <n>]
- *     [--out results/<dir>] [--resume <dir>]
+ *     [--reasoning-effort <level>] [--no-public-reuse] [--out results/<dir>] [--resume <dir>]
  *   OPENAI_API_KEY=... node benchmark/run-batch.js [--model gpt-5.6-luna] [...]
  */
 
@@ -26,6 +26,8 @@ import {
   MAX_MAZES_PER_TIER,
   MODEL_ALLOWLIST,
   PROVIDERS,
+  REASONING_EFFORT,
+  REASONING_EFFORTS_BY_PROVIDER,
   TIMEOUT_MS,
   contractDescriptor,
   sha256,
@@ -44,6 +46,7 @@ import { createMockAdapter } from "./adapters/mock-adapter.js";
 import { computeEpisodeMetrics } from "./metrics.js";
 import { TERMINAL_STATUSES, regenerateSummary } from "./summarize.js";
 import { inspectGitProvenance } from "./provenance.js";
+import { findPublishedEpisode, loadPublishedEpisodeCache } from "./published-reuse.js";
 import { BENCHMARK_SHORT_NAME } from "../lib/benchmark-brand.js";
 
 const RESUME_MANIFEST_FIELDS = [
@@ -95,6 +98,8 @@ function parseArgs(argv) {
     provider: null,
     suiteSeed: null,
     mazesPerTier: null,
+    reasoningEffort: null,
+    reusePublic: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--dry-run") args.dryRun = true;
@@ -104,6 +109,8 @@ function parseArgs(argv) {
     else if (argv[i] === "--provider") args.provider = argv[++i];
     else if (argv[i] === "--suite-seed") args.suiteSeed = argv[++i];
     else if (argv[i] === "--mazes-per-tier") args.mazesPerTier = Number(argv[++i]);
+    else if (argv[i] === "--reasoning-effort") args.reasoningEffort = argv[++i];
+    else if (argv[i] === "--no-public-reuse") args.reusePublic = false;
     else throw new Error(`Unknown argument: ${argv[i]}`);
   }
   const provider = args.provider ?? "openai";
@@ -116,6 +123,10 @@ function parseArgs(argv) {
     args.mazesPerTier > MAX_MAZES_PER_TIER
   )) {
     throw new Error(`--mazes-per-tier must be an integer from 1 to ${MAX_MAZES_PER_TIER}.`);
+  }
+  const providerEfforts = REASONING_EFFORTS_BY_PROVIDER[provider];
+  if (args.reasoningEffort !== null && !providerEfforts.includes(args.reasoningEffort)) {
+    throw new Error(`--reasoning-effort for ${provider} must be one of: ${providerEfforts.join(", ")}.`);
   }
   return args;
 }
@@ -168,6 +179,7 @@ export async function runBatch(options = {}) {
   const dryRun = options.dryRun ?? false;
   const model = options.model ?? DEFAULT_MODEL;
   const provider = options.provider ?? "openai";
+  const reasoningEffort = options.reasoningEffort ?? REASONING_EFFORT;
   const sleepImpl = options.sleepImpl ?? ((waitMs) => new Promise((resolve) => setTimeout(resolve, waitMs)));
   const episodeCooldownMs = options.episodeCooldownMs ?? INTER_EPISODE_COOLDOWN_MS;
 
@@ -176,6 +188,10 @@ export async function runBatch(options = {}) {
   }
   if (!MODEL_ALLOWLIST.includes(model)) {
     throw new Error(`Model "${model}" is not in the allowlist (${MODEL_ALLOWLIST.join(", ")}).`);
+  }
+  const providerEfforts = REASONING_EFFORTS_BY_PROVIDER[provider];
+  if (!providerEfforts.includes(reasoningEffort)) {
+    throw new Error(`Unknown reasoning effort "${reasoningEffort}" for ${provider} (${providerEfforts.join(", ")}).`);
   }
 
   const batchId = options.batchId
@@ -229,6 +245,7 @@ export async function runBatch(options = {}) {
   const expectedManifest = {
     batchId: options.resume ? existingManifest.batchId : (options.batchId ?? path.basename(batchDir)),
     ...contractDescriptor(),
+    reasoningEffort,
     mode: dryRun ? "dry-run" : "live",
     resultClass: dryRun || options.commit ? "exploratory" : "official",
     provider,
@@ -280,11 +297,16 @@ export async function runBatch(options = {}) {
 
   const adapterFor = () => {
     if (dryRun) return createMockAdapter();
-    if (provider === "openrouter") return createOpenRouterAdapter(options.apiKey, { model });
-    return createOpenAIAdapter(options.apiKey, { model });
+    if (provider === "openrouter") return createOpenRouterAdapter(options.apiKey, { model, reasoningEffort });
+    return createOpenAIAdapter(options.apiKey, { model, reasoningEffort });
   };
 
-  /** @type {Array<{ fixtureId: string, status: string, skipped: boolean }>} */
+  const publicReplayDir = path.resolve(options.publicReplayDir ?? "public/replay-data");
+  const publishedCache = options.reusePublic === false
+    ? new Map()
+    : loadPublishedEpisodeCache(publicReplayDir);
+
+  /** @type {Array<{ fixtureId: string, status: string, skipped: boolean, reused?: boolean }>} */
   const outcomes = [];
   for (const fixture of fixtures) {
     const episodeDir = path.join(batchDir, "episodes", fixture.fixtureId);
@@ -298,6 +320,25 @@ export async function runBatch(options = {}) {
         outcomes.push({ fixtureId: fixture.fixtureId, status: previous.status, skipped: true });
         continue;
       }
+    }
+
+    const published = findPublishedEpisode(publishedCache, manifest, fixture);
+    if (published) {
+      mkdirSync(episodeDir, { recursive: true });
+      writeFileSync(path.join(episodeDir, "transcript.jsonl"), published.transcript);
+      const end = published.events.find((event) => event.type === "episode_end");
+      const metrics = computeEpisodeMetrics(published.events, fixture);
+      writeFileSync(summaryPath, `${JSON.stringify({
+        status: end.status,
+        reason: end.reason ?? null,
+        turns: end.turns ?? metrics.attemptedTurns,
+        wallClockMs: 0,
+        metrics,
+        reusedFromPublic: published.sourceRunId,
+      }, null, 2)}\n`);
+      console.log(`[${fixture.fixtureId}] reuse published ${published.sourceRunId} (${end.status})`);
+      outcomes.push({ fixtureId: fixture.fixtureId, status: end.status, skipped: true, reused: true });
+      continue;
     }
 
     mkdirSync(episodeDir, { recursive: true });
@@ -378,6 +419,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     resume: Boolean(args.resume),
     suiteSeed: args.suiteSeed ?? undefined,
     mazesPerTier: args.mazesPerTier ?? undefined,
+    reasoningEffort: args.reasoningEffort ?? undefined,
+    reusePublic: args.reusePublic,
     apiKey: process.env[apiKeyEnv],
   }).then((result) => {
     const terminal = result.outcomes.every((outcome) => TERMINAL_STATUSES.has(outcome.status));

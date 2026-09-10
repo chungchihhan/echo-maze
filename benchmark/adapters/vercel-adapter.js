@@ -27,7 +27,7 @@ import { retryDelay } from "./retry-delay.js";
  * @param {"openai"|"openrouter"} provider
  * @param {string} apiKey
  * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, model?: string,
- *            retryDelayImpl?: typeof retryDelay, pacingMs?: number,
+ *            retryDelayImpl?: typeof retryDelay, pacingMs?: number, reasoningEffort?: string,
  *            sleepImpl?: (waitMs: number) => Promise<void> }} [options]
  */
 export function createVercelBenchmarkAdapter(provider, apiKey, options = {}) {
@@ -35,6 +35,7 @@ export function createVercelBenchmarkAdapter(provider, apiKey, options = {}) {
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
   const retryDelayImpl = options.retryDelayImpl ?? retryDelay;
   const pacingMs = options.pacingMs ?? INTER_REQUEST_PACING_MS;
+  const reasoningEffort = options.reasoningEffort ?? REASONING_EFFORT;
   const sleepImpl = options.sleepImpl ?? ((waitMs) => new Promise((resolve) => setTimeout(resolve, waitMs)));
   const client = createEchoMazeAIClient({
     provider,
@@ -70,7 +71,7 @@ export function createVercelBenchmarkAdapter(provider, apiKey, options = {}) {
         schemaName: RESPONSE_SCHEMA_NAME,
         schema: RESPONSE_SCHEMA,
         maxOutputTokens,
-        reasoningEffort: REASONING_EFFORT,
+        reasoningEffort,
         timeoutMs,
       });
 

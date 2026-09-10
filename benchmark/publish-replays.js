@@ -15,6 +15,12 @@ import {
   BENCHMARK_SHORT_NAME,
   BENCHMARK_THEME,
 } from "../lib/benchmark-brand.js";
+import {
+  encodeReusableTranscript,
+  publishedEpisodeIdentity,
+  publishedEpisodeIdentityHash,
+} from "./published-reuse.js";
+import { sha256 } from "./contract.js";
 
 const THINK_FRAME_MS = 2200;
 const MOVE_FRAME_MS = 6800;
@@ -143,6 +149,7 @@ async function main() {
       loadFixture(source, fixtureId),
     ]);
     const transcript = parseJsonLines(rawTranscript);
+    const reuseTranscript = encodeReusableTranscript(transcript);
     const summary = JSON.parse(rawSummary);
     const events = publicEvents(transcript);
     const playbackDuration = playbackDurationMs(events);
@@ -152,7 +159,7 @@ async function main() {
     const startedAt = transcript.find((event) => event.type === "episode_start")?.startedAt ?? manifest.createdAt;
     const endedAt = transcript.find((event) => event.type === "episode_end")?.endedAt ?? startedAt;
     const detail = {
-      version: 2,
+      version: 3,
       source: "benchmark",
       benchmark: {
         batchId: manifest.batchId,
@@ -166,6 +173,12 @@ async function main() {
         provider: manifest.provider,
         originalStatus: summary.status,
         playbackDurationMs: playbackDuration,
+        reuse: {
+          identity: publishedEpisodeIdentity(manifest, fixture),
+          identityHash: publishedEpisodeIdentityHash(manifest, fixture),
+          transcriptHash: sha256(reuseTranscript),
+          transcript: reuseTranscript,
+        },
       },
       run: {
         id,

@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -29,6 +29,7 @@ import {
   ROUTE_LENGTH_TIERS,
   SCHEMA_HASH,
   WALKER_PROMPT,
+  contractDescriptor,
   sha256,
 } from "../benchmark/contract.js";
 import {
@@ -51,6 +52,11 @@ import {
 } from "../benchmark/metrics.js";
 import { regenerateSummary } from "../benchmark/summarize.js";
 import { runBatch } from "../benchmark/run-batch.js";
+import {
+  encodeReusableTranscript,
+  publishedEpisodeIdentity,
+  publishedEpisodeIdentityHash,
+} from "../benchmark/published-reuse.js";
 import {
   BENCHMARK_NAME,
   BENCHMARK_SHORT_NAME,
@@ -173,6 +179,30 @@ test("generated v0 suites are deterministic, stratified, unique, and BFS-verifie
     "deepseek/deepseek-v4-flash-0731",
     "z-ai/glm-5.3-flash",
   ]);
+});
+
+test("published reuse identity survives suite expansion but separates effort", () => {
+  const fixture = generateFixtureSuite("reuse-suite", 1)[0];
+  const base = {
+    ...contractDescriptor(),
+    mode: "live",
+    resultClass: "official",
+    provider: "openrouter",
+    apiEndpoint: "https://openrouter.ai/api/v1/chat/completions",
+    modelRequested: "openai/gpt-5.6-luna",
+    suiteSeed: "reuse-suite",
+    mazesPerTier: 3,
+    fixtureOrder: [fixture.fixtureId],
+  };
+  const expanded = { ...base, mazesPerTier: 6, fixtureOrder: [fixture.fixtureId, "another"] };
+  assert.equal(
+    publishedEpisodeIdentityHash(base, fixture),
+    publishedEpisodeIdentityHash(expanded, fixture),
+  );
+  assert.notEqual(
+    publishedEpisodeIdentityHash(base, fixture),
+    publishedEpisodeIdentityHash({ ...base, reasoningEffort: "medium" }, fixture),
+  );
 });
 
 test("policy v0.1: a visibly blocked direction is a wall hit, not a termination", async () => {
@@ -543,6 +573,66 @@ test("resume refuses incompatible manifests and preserves the original metadata"
   }
 });
 
+test("an expanded suite reuses matching published episodes and runs only new fixtures", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "emz-public-reuse-test-"));
+  const firstDir = path.join(root, "first");
+  const expandedDir = path.join(root, "expanded");
+  const publicDir = path.join(root, "public-replay-data");
+  try {
+    await runBatch({
+      dryRun: true,
+      batchId: "reuse-first",
+      outDir: firstDir,
+      suiteSeed: "reuse-suite",
+      mazesPerTier: 1,
+      reusePublic: false,
+    });
+    const manifest = JSON.parse(await readFile(path.join(firstDir, "manifest.json"), "utf8"));
+    const fixtures = generateFixtureSuite("reuse-suite", 1);
+    await mkdir(path.join(publicDir, "runs"), { recursive: true });
+    for (const fixture of fixtures) {
+      const raw = await readFile(
+        path.join(firstDir, "episodes", fixture.fixtureId, "transcript.jsonl"),
+        "utf8",
+      );
+      const events = raw.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      const transcript = encodeReusableTranscript(events);
+      const identity = publishedEpisodeIdentity(manifest, fixture);
+      const detail = {
+        benchmark: { reuse: {
+          identity,
+          identityHash: publishedEpisodeIdentityHash(manifest, fixture),
+          transcriptHash: sha256(transcript),
+          transcript,
+        } },
+        run: { id: `published--${fixture.fixtureId}`, updatedAt: 1 },
+      };
+      await writeFile(
+        path.join(publicDir, "runs", `${fixture.fixtureId}.json`),
+        `${JSON.stringify(detail)}\n`,
+      );
+    }
+
+    const expanded = await runBatch({
+      dryRun: true,
+      batchId: "reuse-expanded",
+      outDir: expandedDir,
+      suiteSeed: "reuse-suite",
+      mazesPerTier: 2,
+      publicReplayDir: publicDir,
+    });
+    assert.equal(expanded.outcomes.length, 6);
+    assert.equal(expanded.outcomes.filter((outcome) => outcome.reused).length, 3);
+    assert.deepEqual(
+      expanded.outcomes.filter((outcome) => outcome.reused).map((outcome) => outcome.fixtureId),
+      ["emz-v0-easy-001", "emz-v0-medium-001", "emz-v0-hard-001"],
+    );
+    assert.equal(expanded.summary.recordedEpisodes, 6);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("OpenRouter adapter retries length-truncated output with doubled budget", async () => {
   /** @type {any[]} */
   const bodies = [];
@@ -568,6 +658,7 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
   const adapter = createOpenRouterAdapter("test-key-not-a-secret", {
     fetchImpl,
     model: requestedModel,
+    reasoningEffort: "medium",
     retryDelayImpl: async () => {},
     pacingMs: 0,
     timeoutMs: 1000,
@@ -576,6 +667,10 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].max_tokens, 2000);
   assert.equal(bodies[1].max_tokens, 4000);
+  assert.deepEqual(bodies.map((body) => body.reasoning), [
+    { effort: "medium" },
+    { effort: "medium" },
+  ]);
   assert.equal(result.attempts[0].errorCategory, "incomplete_output");
   assert.deepEqual(result.attempts.map((attempt) => attempt.modelRequested), [requestedModel, requestedModel]);
   assert.equal(result.error, null);

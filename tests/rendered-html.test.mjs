@@ -149,7 +149,7 @@ test("published benchmark index is valid and its runs are replayable", async () 
   assert.ok(detail.events.some((event) => event.type === "agent_request"));
   assert.ok(detail.events.some((event) => event.type === "solo_walker_response"));
   assert.ok(detail.events.some((event) => event.type === "solo_walker_move"));
-  assert.doesNotMatch(JSON.stringify(detail), /requestId|responseId|input_tokens|conversation/);
+  assert.doesNotMatch(JSON.stringify(detail), /requestId|responseId|conversation/);
 });
 
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
