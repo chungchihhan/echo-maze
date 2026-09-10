@@ -5,6 +5,7 @@
  */
 
 import { createEchoMazeAIClient } from "../../lib/ai/vercel-client.js";
+import { BENCHMARK_SHORT_NAME } from "../../lib/benchmark-brand.js";
 import {
   DEFAULT_MODEL,
   INTER_REQUEST_PACING_MS,
@@ -40,7 +41,7 @@ export function createVercelBenchmarkAdapter(provider, apiKey, options = {}) {
     apiKey,
     model,
     fetchImpl: options.fetchImpl,
-    appName: "Echo Maze Benchmark",
+    appName: BENCHMARK_SHORT_NAME,
   });
 
   async function waitForRetry(meta, attempt) {

@@ -1,5 +1,5 @@
 /**
- * Echo Maze Benchmark v0 verification command.
+ * EMZ Benchmark v0 verification command.
  *
  * Validates the whole benchmark surface without any network access:
  * 1. Fixture integrity: deterministic tier counts, seed/hash uniqueness,
@@ -32,6 +32,7 @@ import { runEpisode } from "./episode.js";
 import { createMockAdapter } from "./adapters/mock-adapter.js";
 import { computeEpisodeMetrics, percentile } from "./metrics.js";
 import { walkerObservation, applyMove, relativeDelta } from "../lib/maze/index.js";
+import { BENCHMARK_SHORT_NAME, BENCHMARK_THEME } from "../lib/benchmark-brand.js";
 
 let failures = 0;
 function check(name, fn) {
@@ -49,6 +50,7 @@ async function main() {
   const byId = new Map(fixtures.map((fixture) => [fixture.fixtureId, fixture]));
   const fixtureIds = fixtures.map((fixture) => fixture.fixtureId);
 
+  console.log(`${BENCHMARK_SHORT_NAME} · ${BENCHMARK_THEME}`);
   console.log("fixtures");
   await check("fixture suite has equal tier counts in deterministic order", () => {
     assert.equal(fixtures.length, ROUTE_LENGTH_TIERS.length * DEFAULT_MAZES_PER_TIER);
@@ -204,7 +206,7 @@ async function main() {
   });
 
   console.log("end-to-end dry pipeline (mock, offline)");
-  const tempDir = await mkdtemp(path.join(tmpdir(), "echo-bench-verify-"));
+  const tempDir = await mkdtemp(path.join(tmpdir(), "emz-verify-"));
   try {
     /** @type {Array<{ events: any[], result: any }>} */
     const runs = [];

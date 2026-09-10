@@ -10,6 +10,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fixtureCells, loadFixture } from "./fixtures.js";
+import {
+  BENCHMARK_NAME,
+  BENCHMARK_SHORT_NAME,
+  BENCHMARK_THEME,
+} from "../lib/benchmark-brand.js";
 
 const THINK_FRAME_MS = 2200;
 const MOVE_FRAME_MS = 6800;
@@ -151,6 +156,9 @@ async function main() {
       source: "benchmark",
       benchmark: {
         batchId: manifest.batchId,
+        benchmarkName: manifest.benchmarkName ?? BENCHMARK_NAME,
+        benchmarkShortName: manifest.benchmarkShortName ?? BENCHMARK_SHORT_NAME,
+        benchmarkTheme: manifest.benchmarkTheme ?? BENCHMARK_THEME,
         benchmarkVersion: manifest.benchmarkVersion,
         policyRevision: manifest.policyRevision,
         reasoningEffort: manifest.reasoningEffort ?? null,

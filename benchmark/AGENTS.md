@@ -6,7 +6,7 @@ Applies to `benchmark/**`. Batch-local fixture snapshots under `results/` are ar
 
 ## Purpose
 
-This module implements the headless Echo Maze Benchmark: a versioned contract, seeded and stratified maze suites, batch-local immutable snapshots, model adapters, an append-only episode state machine, event-log-derived metrics, a sequential batch runner, and offline verification. It shares environment semantics with the UI through `../lib/maze/` and never depends on the browser.
+This module implements the headless Echo Maze Benchmark (EMZ Benchmark), themed "Memory in Motion": a versioned contract, seeded and stratified maze suites, batch-local immutable snapshots, model adapters, an append-only episode state machine, event-log-derived metrics, a sequential batch runner, and offline verification. It shares environment semantics with the UI through `../lib/maze/` and never depends on the browser.
 
 ## Start here
 

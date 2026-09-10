@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { DIRECTIONS, walkerObservation as observeWalkerCell } from "../lib/maze/index.js";
 import type { DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
+import { formatBenchmarkFixtureId } from "../lib/benchmark-brand.js";
 import { GridWalkerMarker, WalkerMarker } from "./walker-marker";
 import { MazeSightLayer } from "./maze-sight";
 import { MazeStructure } from "./maze-structure";
@@ -466,7 +467,7 @@ function ReplayObservation({ detail, frame, isLastFrame, showFullMap, onToggleMa
         <Link className="run-identity" href={`/replays/${encodeURIComponent(detail.run.id)}`}>
           <span>RECORDED RUN</span>
           <strong>{detail.run.model}</strong>
-          <em>Maze {detail.run.mazeSeed}</em>
+          <em>Maze {formatBenchmarkFixtureId(detail.run.mazeSeed)}</em>
         </Link>
         <div className="observation-actions">
           {showReplayLink ? <Link className="button open-replay-button" href={`/replays/${encodeURIComponent(detail.run.id)}`}>Open replay <span>↗</span></Link> : null}

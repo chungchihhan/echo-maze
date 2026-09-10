@@ -1,5 +1,5 @@
 /**
- * Echo Maze Benchmark v0 sequential batch runner.
+ * EMZ Benchmark v0 sequential batch runner.
  *
  * Generates a seeded, stratified fixture suite per batch and runs one episode
  * at a time, with
@@ -44,6 +44,7 @@ import { createMockAdapter } from "./adapters/mock-adapter.js";
 import { computeEpisodeMetrics } from "./metrics.js";
 import { TERMINAL_STATUSES, regenerateSummary } from "./summarize.js";
 import { inspectGitProvenance } from "./provenance.js";
+import { BENCHMARK_SHORT_NAME } from "../lib/benchmark-brand.js";
 
 const RESUME_MANIFEST_FIELDS = [
   "benchmarkId",
@@ -178,7 +179,7 @@ export async function runBatch(options = {}) {
   }
 
   const batchId = options.batchId
-    ?? `bench-${contractDescriptor().benchmarkVersion}-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}Z`;
+    ?? `emz-${contractDescriptor().benchmarkVersion}-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}Z`;
   const batchDir = path.resolve(options.outDir ?? path.join("results", batchId));
   const manifestPath = path.join(batchDir, "manifest.json");
   const hasExistingManifest = existsSync(manifestPath);
@@ -195,11 +196,11 @@ export async function runBatch(options = {}) {
 
   const suiteSeed = options.suiteSeed
     ?? existingManifest?.suiteSeed
-    ?? `suite-${randomBytes(8).toString("hex")}`;
+    ?? `emz-suite-${randomBytes(8).toString("hex")}`;
   const mazesPerTier = options.mazesPerTier
     ?? existingManifest?.mazesPerTier
     ?? DEFAULT_MAZES_PER_TIER;
-  const generatedFixtures = generateFixtureSuite(suiteSeed, mazesPerTier);
+  const generatedFixtures = existingManifest ? [] : generateFixtureSuite(suiteSeed, mazesPerTier);
   const fixtures = existingManifest
     ? await loadAllFixtures(batchDir, existingManifest.fixtureOrder ?? [])
     : generatedFixtures;
@@ -245,8 +246,9 @@ export async function runBatch(options = {}) {
     retryPolicy: contractDescriptor().retryPolicy,
     suiteSeed,
     mazesPerTier,
-    fixtureOrder: generatedFixtures.map((fixture) => fixture.fixtureId),
-    fixtureSetHash: sha256(generatedFixtures.map((fixture) => [fixture.fixtureId, fixture.fixtureHash])),
+    fixtureOrder: existingManifest?.fixtureOrder ?? generatedFixtures.map((fixture) => fixture.fixtureId),
+    fixtureSetHash: existingManifest?.fixtureSetHash
+      ?? sha256(generatedFixtures.map((fixture) => [fixture.fixtureId, fixture.fixtureHash])),
     runtime: {
       node: process.version,
       platform: `${process.platform}-${process.arch}`,
@@ -350,7 +352,7 @@ function summaryMarkdownHeader(summary) {
     ? summary.modelsReturned.join(", ")
     : summary.modelReturned ?? "unknown";
   return [
-    `${summary.modelRequested} → ${returnedModels} · Echo Maze ${summary.benchmarkVersion} [${summary.mode.toUpperCase()} · ${summary.resultClass}]`,
+    `${summary.modelRequested} → ${returnedModels} · ${BENCHMARK_SHORT_NAME} ${summary.benchmarkVersion} [${summary.mode.toUpperCase()} · ${summary.resultClass}]`,
     `${summary.solved}/${summary.totalEpisodes} scored episodes solved · ${percent(summary.successRate)} success`,
     `Mean SPL: ${round3(summary.meanSpl)} | Solved-only path efficiency: ${round3(summary.solvedOnlyPathEfficiency)}`,
     `Wall hits: ${summary.totals.wallHits} | Invalid responses: ${summary.totals.invalidResponses} | API failures: ${summary.totals.apiFailures} | Infra interruptions: ${summary.totals.infraInterruptions}`,

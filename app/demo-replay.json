@@ -6,7 +6,7 @@
     "updatedAt": 1787476474114,
     "status": "won",
     "model": "gpt-5.6-luna",
-    "mazeSeed": "ECHO-BENCH-V0-02",
+    "mazeSeed": "EMZ-V0-02",
     "maze": {
       "cells": [
         [
@@ -847,7 +847,7 @@
         "c": 8
       },
       "routeLength": 26,
-      "seed": "ECHO-BENCH-V0-02"
+      "seed": "EMZ-V0-02"
     },
     "initialPosition": {
       "r": 5,
