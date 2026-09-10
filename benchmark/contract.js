@@ -73,6 +73,10 @@ export const INTER_EPISODE_COOLDOWN_MS = 30_000;
 export const RATE_LIMIT_RETRY_BASE_MS = 30_000;
 export const MAX_OUTPUT_TOKENS_BASE = 2000;
 export const REASONING_EFFORT = "low";
+export const REASONING_EFFORTS_BY_PROVIDER = {
+  openai: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+  openrouter: ["none", "minimal", "low", "medium", "high", "xhigh"],
+};
 export const AI_TRANSPORT = {
   sdk: "Vercel AI SDK",
   coreMajor: 7,

@@ -26,6 +26,7 @@ This module implements the headless Echo Maze Benchmark (EMZ Benchmark), themed 
 
 - Prompts receive only the narrow observation DTO from `lib/maze` plus the current run's conversation. Full mazes, exit coordinates, seeds, optimal routes, or spectator state must not enter prompts.
 - Policy v0.7: each batch generates equal fixture counts in the 16–23, 24–31, and 32–39 route-length tiers. The default is three per tier and `--mazes-per-tier` is configurable. Model output remains `estimated_position`, free-form `notes`, and `action`.
+- Published episode reuse is strict and fixture-level. It may span a larger suite, but only when the suite seed, fixture hash, provider, requested model, reasoning effort, execution policy, and all contract hashes match. Use `--no-public-reuse` for an intentional fresh sample.
 - Metrics come from event logs, never from in-memory counters.
 - Filesystem artifacts under `results/` (gitignored) are canonical; D1, if added later, is only a projection.
 - Every batch records its suite seed, per-tier count, fixture order, full snapshots, and fixture-set hash. The Walker must never receive any of them.
@@ -37,6 +38,7 @@ npm run benchmark:verify      # offline invariant checks
 npm run benchmark:dry-run     # defaults to 3 mazes per tier (9 total)
 OPENAI_API_KEY=... npm run benchmark:run            # live via OpenAI Responses API
 OPENROUTER_API_KEY=... npm run benchmark:run -- --provider openrouter --model <id>   # live via OpenRouter
+npm run benchmark:run -- --reasoning-effort medium # effort is recorded and never reused across levels
 npm run benchmark:summary -- results/<dir>          # regenerate summaries from artifacts
 npm run benchmark:run -- --dry-run --resume results/<dir> # resume a compatible dry-run batch
 ```
