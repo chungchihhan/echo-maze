@@ -315,6 +315,7 @@ test("mock dry-run pipeline completes 9 isolated episodes and summaries regenera
       assert.ok(["solved", "unsolved_max_turns"].includes(outcome.status), outcome.status);
     }
     assert.equal(summary.mode, "dry-run");
+    assert.equal(summary.reasoningEffort, "low");
     assert.equal(summary.liveApiCall, false);
     assert.equal(summary.episodes.length, 9);
     assert.equal(summary.difficultyTiers.easy.totalEpisodes, 3);
