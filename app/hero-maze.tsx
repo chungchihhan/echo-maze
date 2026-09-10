@@ -25,6 +25,8 @@ const EXIT_HOLD_MS = 900;
 const EXIT_RADIUS = 0.34;
 const EXIT_DROP_DISTANCE = 0.48;
 const HERO_FRAME_INTERVAL_MS = 1000 / 60;
+const HERO_MAZE_VISUAL_SCALE = 0.9;
+const HERO_MAZE_HORIZONTAL_FILM_OFFSET = -1.2;
 
 function getWallSegments(maze: Maze): WallSegment[] {
   const size = maze.cells.length;
@@ -218,6 +220,8 @@ export function HeroMaze({ mazes }: { mazes: readonly Maze[] }) {
       const camera = new three.PerspectiveCamera(baseCameraFov, 1, 0.1, 100);
       // Start at a 45-degree elevation so the maze reads as a space, not a flat plan.
       camera.position.set(11, 15.5, 11);
+      camera.zoom = HERO_MAZE_VISUAL_SCALE;
+      camera.filmOffset = HERO_MAZE_HORIZONTAL_FILM_OFFSET;
 
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setClearColor(0x0033e5, 0);
