@@ -51,7 +51,7 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.doesNotMatch(text, /WALKER OUTPUT|ENVIRONMENT RESULT|COORDINATE STATUS/);
   assert.doesNotMatch(text, /OUTCOME/);
   assert.match(text, /THE BENCHMARK/);
-  assert.match(text, /A memory test with no map/);
+  assert.match(text, /The exit is only half the story/);
   assert.match(text, /Partial observability/);
   assert.match(html, /app-navigation/);
   assert.match(html, /aria-label="Open navigation"/);
