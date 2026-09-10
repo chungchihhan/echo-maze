@@ -2,12 +2,12 @@
   "version": 1,
   "runs": [
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-001",
+      "id": "luna-2026-08-29-01--emz-v0-easy-001",
       "created_at": 1788008863174,
       "updated_at": 1788009366924,
       "status": "unsolved_max_turns",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-easy-001",
+      "maze_seed": "emz-v0-easy-001",
       "event_count": 360,
       "max_turn": 120,
       "had_error": 0,
@@ -22,12 +22,12 @@
       "homepage_order": 1
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-002",
+      "id": "luna-2026-08-29-01--emz-v0-easy-002",
       "created_at": 1788009366942,
       "updated_at": 1788009369124,
       "status": "infra_interrupted",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-easy-002",
+      "maze_seed": "emz-v0-easy-002",
       "event_count": 2,
       "max_turn": 1,
       "had_error": 1,
@@ -42,12 +42,12 @@
       "homepage_order": 2
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-easy-003",
+      "id": "luna-2026-08-29-01--emz-v0-easy-003",
       "created_at": 1788009369129,
       "updated_at": 1788009467141,
       "status": "solved",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-easy-003",
+      "maze_seed": "emz-v0-easy-003",
       "event_count": 99,
       "max_turn": 33,
       "had_error": 0,
@@ -62,12 +62,12 @@
       "homepage_order": 3
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-001",
+      "id": "luna-2026-08-29-01--emz-v0-medium-001",
       "created_at": 1788009467148,
       "updated_at": 1788009957867,
       "status": "unsolved_max_turns",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-medium-001",
+      "maze_seed": "emz-v0-medium-001",
       "event_count": 360,
       "max_turn": 120,
       "had_error": 0,
@@ -82,12 +82,12 @@
       "homepage_order": 4
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-002",
+      "id": "luna-2026-08-29-01--emz-v0-medium-002",
       "created_at": 1788009957884,
       "updated_at": 1788010027739,
       "status": "solved",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-medium-002",
+      "maze_seed": "emz-v0-medium-002",
       "event_count": 81,
       "max_turn": 27,
       "had_error": 0,
@@ -102,12 +102,12 @@
       "homepage_order": 5
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-medium-003",
+      "id": "luna-2026-08-29-01--emz-v0-medium-003",
       "created_at": 1788010027753,
       "updated_at": 1788010524584,
       "status": "unsolved_max_turns",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-medium-003",
+      "maze_seed": "emz-v0-medium-003",
       "event_count": 360,
       "max_turn": 120,
       "had_error": 0,
@@ -122,12 +122,12 @@
       "homepage_order": 6
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-001",
+      "id": "luna-2026-08-29-01--emz-v0-hard-001",
       "created_at": 1788010524602,
       "updated_at": 1788010888826,
       "status": "infra_interrupted",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-hard-001",
+      "maze_seed": "emz-v0-hard-001",
       "event_count": 305,
       "max_turn": 102,
       "had_error": 1,
@@ -142,12 +142,12 @@
       "homepage_order": 7
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-002",
+      "id": "luna-2026-08-29-01--emz-v0-hard-002",
       "created_at": 1788010888845,
       "updated_at": 1788011085257,
       "status": "solved",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-hard-002",
+      "maze_seed": "emz-v0-hard-002",
       "event_count": 216,
       "max_turn": 72,
       "had_error": 0,
@@ -162,12 +162,12 @@
       "homepage_order": 8
     },
     {
-      "id": "luna-2026-08-29-01--echo-maze-bench-v0-hard-003",
+      "id": "luna-2026-08-29-01--emz-v0-hard-003",
       "created_at": 1788011085279,
       "updated_at": 1788011619648,
       "status": "unsolved_max_turns",
       "model": "gpt-5.6-luna",
-      "maze_seed": "echo-maze-bench-v0-hard-003",
+      "maze_seed": "emz-v0-hard-003",
       "event_count": 360,
       "max_turn": 120,
       "had_error": 0,

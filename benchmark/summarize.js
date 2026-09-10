@@ -16,6 +16,12 @@ import path from "node:path";
 import { BENCHMARK_VERSION, ROUTE_LENGTH_TIERS } from "./contract.js";
 import { loadFixture } from "./fixtures.js";
 import { computeBatchLatency, computeBatchMetrics, computeEpisodeMetrics } from "./metrics.js";
+import {
+  BENCHMARK_ID,
+  BENCHMARK_NAME,
+  BENCHMARK_SHORT_NAME,
+  BENCHMARK_THEME,
+} from "../lib/benchmark-brand.js";
 
 const TERMINAL_STATUSES = new Set(["solved", "unsolved_max_turns", "invalid_output", "api_failure"]);
 
@@ -81,7 +87,10 @@ export async function regenerateSummary(batchDir) {
   const mode = manifest.mode ?? "live";
 
   const summary = {
-    benchmarkId: "echo-maze-benchmark",
+    benchmarkId: manifest.benchmarkId ?? BENCHMARK_ID,
+    benchmarkName: manifest.benchmarkName ?? BENCHMARK_NAME,
+    benchmarkShortName: manifest.benchmarkShortName ?? BENCHMARK_SHORT_NAME,
+    benchmarkTheme: manifest.benchmarkTheme ?? BENCHMARK_THEME,
     benchmarkVersion: manifest.benchmarkVersion ?? BENCHMARK_VERSION,
     policyRevision: manifest.policyRevision ?? "v0.0",
     batchId: manifest.batchId,
@@ -153,12 +162,14 @@ function renderMarkdown(summary) {
   const percent = (value) => value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
   const num = (value) => value === null || value === undefined ? "n/a" : String(value);
   const lines = [];
-  lines.push(`# Echo Maze Benchmark ${s.benchmarkVersion} (policy ${s.policyRevision})`);
+  lines.push(`# ${s.benchmarkShortName} ${s.benchmarkVersion} (policy ${s.policyRevision})`);
+  lines.push("");
+  lines.push(`> ${s.benchmarkName} · ${s.benchmarkTheme}`);
   lines.push("");
   const returnedModels = s.modelsReturned?.length
     ? s.modelsReturned.join(", ")
     : s.modelReturned ?? "unknown";
-  lines.push(`**${s.modelRequested} → ${returnedModels} · Echo Maze ${s.benchmarkVersion}** (${s.provider})`);
+  lines.push(`**${s.modelRequested} → ${returnedModels} · EMZ ${s.benchmarkVersion}** (${s.provider})`);
   if (s.mode === "dry-run") lines.push("");
   if (s.mode === "dry-run") lines.push("> ⚠️ DRY-RUN (deterministic mock adapter) — not a live gpt-5.6-luna result.");
   lines.push("");

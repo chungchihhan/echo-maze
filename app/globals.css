@@ -1227,6 +1227,17 @@ h1 em {
 .benchmark-panel-heading h2 em { display: block; }
 .benchmark-panel-heading h2 em { font-style: normal; text-decoration: underline; text-decoration-thickness: .045em; text-underline-offset: .12em; }
 
+.benchmark-identity {
+  display: grid;
+  align-self: start;
+  gap: 10px;
+}
+
+.benchmark-identity > span {
+  color: var(--mist);
+  font-size: var(--text-body-sm);
+}
+
 .benchmark-summary {
   display: grid;
   gap: 28px;

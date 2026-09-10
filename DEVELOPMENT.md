@@ -118,11 +118,12 @@ The application uses the D1 binding named `DB`. Local generated output,
 transcripts, environment files, and the private `docs/` decision notes are
 ignored by Git.
 
-## Benchmark (Echo Maze Benchmark v0)
+## EMZ Benchmark (Echo Maze Benchmark v0)
 
-The repository includes a reproducible, headless benchmark pipeline that is
-decoupled from the browser UI. The UI and the benchmark runner share one pure
-maze core (`lib/maze/`), so environment semantics cannot drift between them.
+**Memory in Motion.** The repository includes a reproducible, headless
+benchmark pipeline that is decoupled from the browser UI. The UI and the
+benchmark runner share one pure maze core (`lib/maze/`), so environment
+semantics cannot drift between them.
 
 - `lib/maze/` — pure maze core: types, seeded generation, movement
   transitions, corridor line-of-sight observation, BFS pathfinding. No React,

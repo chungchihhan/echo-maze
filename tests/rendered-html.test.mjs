@@ -30,15 +30,15 @@ test("server-renders a landing page with the featured Walker replay", async () =
 
   const html = await response.text();
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  assert.match(html, /<title>Echo Maze — One Agent, Hidden Maze<\/title>/i);
+  assert.match(html, /<title>Echo Maze — Memory in Motion<\/title>/i);
   assert.match(html, /echo-maze-icon\.png/);
   assert.match(text, /ECHO MAZE/);
   assert.match(text, /Maze exploration without a map/);
-  assert.match(text, /A benchmark for memory-driven AI agents/);
+  assert.match(text, /The EMZ Benchmark for memory-driven AI agents/);
   assert.doesNotMatch(text, /Watch one agent remember what it saw/);
   assert.match(text, /RECORDED WALKER RUN/);
   assert.match(text, /One turn at a time/);
-  assert.match(text, /ECHO-BENCH-V0-02/);
+  assert.match(text, /EMZ-V0-02/);
   assert.match(text, /AGENT OUTPUT/);
   assert.match(text, /TURN/);
   assert.match(text, /LAST ACTION/);
@@ -50,7 +50,8 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(text, /ACTION/);
   assert.doesNotMatch(text, /WALKER OUTPUT|ENVIRONMENT RESULT|COORDINATE STATUS/);
   assert.doesNotMatch(text, /OUTCOME/);
-  assert.match(text, /THE BENCHMARK/);
+  assert.match(text, /EMZ BENCHMARK/);
+  assert.match(text, /Memory in Motion/);
   assert.match(text, /The exit is only half the story/);
   assert.match(text, /Partial observability/);
   assert.match(html, /class="landing-footer"/);
@@ -90,7 +91,7 @@ test("server-renders the complete replay workspace", async () => {
   assert.match(text, /AGENT OUTPUT/);
   assert.match(text, /ENVIRONMENT INPUT/);
   assert.match(text, /MODEL ESTIMATE/);
-  assert.match(text, /ECHO-BENCH-V0-02/);
+  assert.match(text, /EMZ-V0-02/);
   assert.match(text, /WALL HITS/);
   assert.match(text, /shortest path 26 moves/);
   assert.doesNotMatch(text, /OUTCOME/);
@@ -131,12 +132,17 @@ test("published benchmark index is valid and its runs are replayable", async () 
   assert.ok(index.runs.every((run) => run.playback_duration_ms > 0));
   assert.ok(index.runs.every((run) => typeof run.featured === "boolean"));
   assert.ok(index.runs.every((run) => run.reasoning_effort === "low"));
+  assert.ok(index.runs.every((run) => /^emz-v0-(easy|medium|hard)-\d{3}$/.test(run.maze_seed)));
+  assert.ok(index.runs.every((run) => run.id.endsWith(`--${run.maze_seed}`)));
   assert.deepEqual(index.runs.map((run) => run.homepage_order), index.runs.map((_run, index) => index + 1));
 
   const runId = index.runs[0]?.id;
   if (!runId) return;
   const detail = JSON.parse(await readFile(new URL(`../public/replay-data/runs/${runId}.json`, import.meta.url), "utf8"));
   assert.equal(detail.source, "benchmark");
+  assert.equal(detail.benchmark.benchmarkName, "Echo Maze Benchmark");
+  assert.equal(detail.benchmark.benchmarkShortName, "EMZ Benchmark");
+  assert.equal(detail.benchmark.benchmarkTheme, "Memory in Motion");
   assert.equal(detail.benchmark.reasoningEffort, "low");
   assert.equal(detail.run.id, runId);
   assert.equal(detail.run.maze.cells.length, 9);

@@ -13,6 +13,11 @@ import {
   walkerObservation as observeWalkerCell,
 } from "../lib/maze/index.js";
 import type { DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
+import {
+  BENCHMARK_SHORT_NAME,
+  BENCHMARK_THEME,
+  formatBenchmarkFixtureId,
+} from "../lib/benchmark-brand.js";
 import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } from "./demo-replay";
 import { HeroMaze } from "./hero-maze";
 import { MazeSightLayer } from "./maze-sight";
@@ -630,7 +635,7 @@ type PageMode = "replay" | "lab";
 const HERO_MESSAGES = [
   {
     headline: "Maze exploration without a map.",
-    supporting: "A benchmark for memory-driven AI agents.",
+    supporting: "The EMZ Benchmark for memory-driven AI agents.",
   },
   {
     headline: "Find a way through the unseen.",
@@ -1077,7 +1082,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
       <div className={`walker-card-body ${showTurnOutput ? "has-turn-output" : ""}`}>
         <div className="walker-card-main">
           <div className="map-heading">
-            <span>Maze {game.maze.seed} · shortest path {game.maze.routeLength} moves</span>
+            <span>Maze {formatBenchmarkFixtureId(game.maze.seed)} · shortest path {game.maze.routeLength} moves</span>
           </div>
           <MazeViewport game={game} showFullMap={showFullMap} showCaption={showMapCaption} />
           <div className="action-readout">
@@ -1155,7 +1160,7 @@ function LandingReplayStage({
         <div>
           <PanelLabel>RECORDED WALKER RUN</PanelLabel>
           <h2>One turn at a time.</h2>
-          <p>Maze {decisionGame.maze.seed} · shortest path {decisionGame.maze.routeLength} moves</p>
+          <p>Maze {formatBenchmarkFixtureId(decisionGame.maze.seed)} · shortest path {decisionGame.maze.routeLength} moves</p>
         </div>
         <div className="landing-replay-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
@@ -1204,7 +1209,10 @@ function BenchmarkIntro() {
     <section className="benchmark-section" aria-labelledby="benchmark-heading">
       <div className="benchmark-panel">
         <div className="benchmark-panel-heading">
-          <PanelLabel>THE BENCHMARK</PanelLabel>
+          <div className="benchmark-identity">
+            <PanelLabel>{BENCHMARK_SHORT_NAME.toUpperCase()}</PanelLabel>
+            <span>{BENCHMARK_THEME}</span>
+          </div>
           <h2 id="benchmark-heading"><span>The exit is only</span><em>half the story.</em></h2>
           <div className="benchmark-summary">
             <p>One Walker. One conversation. No map or route tool—only observations, memory, and a replay of every move.</p>
@@ -1964,7 +1972,7 @@ export function ReplayHome() {
               {selectedModelGroup?.batches.map((batch) => (
                   <div className="replay-batch-group" key={batch.batchId}>
                     {batch.runs.map((run) => {
-                      const mazeLabel = run.maze_seed.replace("echo-maze-bench-v0-", "").replace(/-(\d+)$/, " $1").replaceAll("-", " ");
+                      const mazeLabel = formatBenchmarkFixtureId(run.maze_seed).replace(/^EMZ-V0-/, "").replace(/-(\d+)$/, " $1").replaceAll("-", " ").toLowerCase();
                       return (
                         <button
                           className={`replay-run-item ${run.id === selectedReplayId ? "is-selected" : ""}`}
@@ -1997,7 +2005,7 @@ export function ReplayHome() {
         <header className="replay-now-playing">
           <div className="replay-now-playing-title">
             <h1>{selectedReplay?.model ?? "Select a replay"}</h1>
-            <strong>{selectedReplay?.maze_seed ?? "No maze selected"}</strong>
+            <strong>{selectedReplay ? formatBenchmarkFixtureId(selectedReplay.maze_seed) : "No maze selected"}</strong>
           </div>
           <div className="replay-now-playing-meta">
             <span>{selectedReplay ? `${selectedReplay.status.replaceAll("_", " ")} · shortest path ${playbackFrame?.game.maze.routeLength ?? "—"} moves` : "Choose a run from the library"}</span>
@@ -2118,7 +2126,7 @@ export function ReplayHome() {
             <button className="replay-transport-play" type="button" onClick={toggleReplayPlayback} disabled={!isReplayMode || playbackFrames.length < 2} aria-label={isReplayPlaying ? "Pause replay" : "Play replay"} aria-keyshortcuts="Space" title="Play or pause · Space">{isReplayPlaying ? "Ⅱ" : "▶"}</button>
             <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run" aria-keyshortcuts="Shift+ArrowRight" title="Next run · Shift + →"><span className="replay-run-skip-icon" aria-hidden="true">▶▶</span></button>
           </div>
-          <div className="replay-current-run"><strong>{selectedReplay?.maze_seed ?? "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
+          <div className="replay-current-run"><strong>{selectedReplay ? formatBenchmarkFixtureId(selectedReplay.maze_seed) : "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
           <div className="replay-player-options">
             <ReplaySpeedPicker value={playbackSpeed} onChange={setPlaybackSpeed} />
             <button type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>{showFullMap ? "Walker View" : "Spectator View"}</button>
