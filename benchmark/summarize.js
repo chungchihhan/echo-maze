@@ -11,6 +11,7 @@
  */
 
 import { readFile, readdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { BENCHMARK_VERSION, ROUTE_LENGTH_TIERS } from "./contract.js";
@@ -99,6 +100,7 @@ export async function regenerateSummary(batchDir) {
     mode,
     resultClass: manifest.resultClass ?? (mode === "dry-run" ? "exploratory" : "unknown"),
     provider: manifest.provider ?? "openai",
+    reasoningEffort: manifest.reasoningEffort ?? null,
     liveApiCall: mode === "live",
     disclaimer: mode === "dry-run"
       ? "DRY-RUN with deterministic mock adapter; NOT a live gpt-5.6-luna result."
@@ -226,3 +228,16 @@ function short(hash) {
 }
 
 export { TERMINAL_STATUSES };
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const batchDir = process.argv[2];
+  if (!batchDir) {
+    console.error("Usage: node benchmark/summarize.js <batchDir>");
+    process.exitCode = 1;
+  } else {
+    regenerateSummary(path.resolve(batchDir)).catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    });
+  }
+}
