@@ -1196,40 +1196,75 @@ h1 em {
 }
 
 .benchmark-panel {
-  display: grid;
-  grid-template-columns: minmax(220px, .7fr) minmax(0, 1.3fr);
-  gap: clamp(32px, 6vw, 88px);
-  padding: clamp(28px, 5vw, 64px);
+  position: relative;
+  width: min(100%, 1280px);
+  margin-inline: auto;
+  overflow: hidden;
   color: var(--cobalt);
   background: var(--ice);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-cobalt-ring);
 }
 
+.benchmark-panel-heading {
+  display: grid;
+  grid-template-columns: minmax(140px, .5fr) minmax(320px, 1.25fr) minmax(240px, .75fr);
+  align-items: end;
+  gap: clamp(28px, 5vw, 72px);
+  padding: clamp(40px, 7vw, 88px) clamp(32px, 5vw, 64px);
+}
+
 .benchmark-panel-heading h2 {
-  max-width: 8em;
-  margin: 16px 0 0;
+  max-width: 9em;
+  margin: 0;
   font-size: clamp(36px, 5vw, 64px);
   font-weight: 400;
   letter-spacing: 0;
   line-height: 1.08;
-  text-wrap: balance;
 }
 
-.benchmark-copy {
-  max-width: 700px;
-  font-size: var(--text-body);
+.benchmark-panel-heading h2 span,
+.benchmark-panel-heading h2 em { display: block; }
+.benchmark-panel-heading h2 em { font-style: normal; text-decoration: underline; text-decoration-thickness: .045em; text-underline-offset: .12em; }
+
+.benchmark-summary {
+  display: grid;
+  gap: 28px;
+}
+
+.benchmark-summary p {
+  margin: 0;
+  font-size: var(--text-body-sm);
   line-height: var(--leading-body);
+  text-wrap: pretty;
 }
 
-.benchmark-copy p { margin: 0; text-wrap: pretty; }
-.benchmark-copy p + p { margin-top: 20px; }
+.benchmark-rules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0 clamp(32px, 5vw, 64px);
+  border-top: 1px solid var(--cobalt);
+  list-style: none;
+}
+
+.benchmark-rules li {
+  display: grid;
+  gap: 8px;
+  padding: clamp(24px, 3vw, 36px) 0 clamp(28px, 4vw, 48px);
+}
+
+.benchmark-rules li + li { padding-left: clamp(24px, 4vw, 56px); border-left: 1px solid var(--mist); }
+.benchmark-rules span,
+.benchmark-rules small { color: var(--mist); font-size: var(--text-body-sm); }
+.benchmark-rules strong { font-size: clamp(20px, 2.2vw, 30px); font-weight: 400; line-height: 1.2; }
+.benchmark-rules small { font: inherit; }
 
 .benchmark-link {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-top: 28px;
+  margin-top: 0;
   color: var(--cobalt);
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -1237,27 +1272,6 @@ h1 em {
 
 .benchmark-link span { transition: transform .2s ease; }
 .benchmark-link:hover span { transform: translateX(3px); }
-
-.benchmark-principles {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--mist);
-}
-
-.benchmark-principles article {
-  min-height: 176px;
-  padding: 20px;
-  color: var(--ice);
-  background: var(--cobalt);
-  border-radius: var(--radius-card);
-}
-
-.benchmark-principles article > span { color: var(--mist); font-size: var(--text-body-sm); }
-.benchmark-principles h3 { margin: 20px 0 0; font-size: var(--text-subheading); font-weight: 400; line-height: 1.2; }
-.benchmark-principles p { margin: 12px 0 0; font-size: var(--text-body-sm); line-height: var(--leading-body); }
 
 .card-head {
   display: flex;
@@ -2473,10 +2487,11 @@ h1 em {
   .landing-page .intro-panel-blue { padding: 40px 16px 32px; }
   .intro-panel-blue { justify-items: start; min-height: 320px; }
   .intro-note { text-align: left; }
-  .benchmark-panel { grid-template-columns: 1fr; gap: 32px; padding: 28px 20px; }
+  .benchmark-panel-heading { grid-template-columns: 1fr; align-items: start; gap: 28px; padding: 40px 20px; }
   .benchmark-panel-heading h2 { max-width: 10em; }
-  .benchmark-principles { grid-column: auto; grid-template-columns: 1fr; }
-  .benchmark-principles article { min-height: 0; }
+  .benchmark-rules { grid-template-columns: 1fr; padding: 0 20px; }
+  .benchmark-rules li { padding: 24px 0; }
+  .benchmark-rules li + li { padding-left: 0; border-top: 1px solid var(--mist); border-left: 0; }
   .control-bar { align-items: flex-start; flex-direction: column; }
   .mode-pill { flex: 1; }
   h1 { font-size: clamp(32px, 9vw, 56px); }

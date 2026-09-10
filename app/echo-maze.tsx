@@ -1205,31 +1205,29 @@ function BenchmarkIntro() {
       <div className="benchmark-panel">
         <div className="benchmark-panel-heading">
           <PanelLabel>THE BENCHMARK</PanelLabel>
-          <h2 id="benchmark-heading">A memory test with no map.</h2>
+          <h2 id="benchmark-heading"><span>The exit is only</span><em>half the story.</em></h2>
+          <div className="benchmark-summary">
+            <p>One Walker. One conversation. No map or route tool—only observations, memory, and a replay of every move.</p>
+            <a className="benchmark-link" href="/replay">Watch a complete run <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
-        <div className="benchmark-copy">
-          <p>Echo Maze is an observable AI-agent game about navigating without a map. The benchmark asks one Walker to find the exit from a generated maze while it can only see along open corridors until a wall blocks its view.</p>
-          <p>On every turn, the Walker interprets that limited observation, remembers what happened earlier in the current conversation, maintains its own relative coordinate system, and chooses the next move.</p>
-          <p>Every run stays reviewable. Successful and failed moves are recorded so a replay can show where the Walker built an accurate map, became confused, recovered, or failed.</p>
-          <a className="benchmark-link" href="/replay">Review a complete run <span aria-hidden="true">↗</span></a>
-        </div>
-        <div className="benchmark-principles" aria-label="Benchmark principles">
-          <article>
-            <span>01 / INPUT</span>
-            <h3>Partial observability</h3>
-            <p>Walls hide everything beyond the corridor the Walker can currently see.</p>
-          </article>
-          <article>
-            <span>02 / MEMORY</span>
-            <h3>One conversation</h3>
-            <p>No full map, route-finding tool, or external notebook is available.</p>
-          </article>
-          <article>
-            <span>03 / EVIDENCE</span>
-            <h3>Replayable runs</h3>
-            <p>Compare the agent&apos;s stated model of the world with the actual maze.</p>
-          </article>
-        </div>
+        <ol className="benchmark-rules" aria-label="Benchmark principles">
+          <li>
+            <span>01 / SEE</span>
+            <strong>Corridors only.</strong>
+            <small>Partial observability</small>
+          </li>
+          <li>
+            <span>02 / REMEMBER</span>
+            <strong>This run only.</strong>
+            <small>One conversation</small>
+          </li>
+          <li>
+            <span>03 / PROVE</span>
+            <strong>Every turn replayed.</strong>
+            <small>Visible evidence</small>
+          </li>
+        </ol>
       </div>
     </section>
   );
