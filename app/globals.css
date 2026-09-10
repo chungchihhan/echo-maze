@@ -453,6 +453,7 @@ input:focus-visible {
   color: var(--ice);
   opacity: .22;
   pointer-events: none;
+  transform: translateX(3%) scale(.9);
   transition: opacity .45s ease;
 }
 
