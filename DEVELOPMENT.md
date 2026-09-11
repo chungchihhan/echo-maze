@@ -118,11 +118,12 @@ The application uses the D1 binding named `DB`. Local generated output,
 transcripts, environment files, and the private `docs/` decision notes are
 ignored by Git.
 
-## Benchmark (Echo Maze Benchmark v0)
+## EMZ Benchmark (Echo Maze Benchmark v0)
 
-The repository includes a reproducible, headless benchmark pipeline that is
-decoupled from the browser UI. The UI and the benchmark runner share one pure
-maze core (`lib/maze/`), so environment semantics cannot drift between them.
+**Memory in Motion.** The repository includes a reproducible, headless
+benchmark pipeline that is decoupled from the browser UI. The UI and the
+benchmark runner share one pure maze core (`lib/maze/`), so environment
+semantics cannot drift between them.
 
 - `lib/maze/` — pure maze core: types, seeded generation, movement
   transitions, corridor line-of-sight observation, BFS pathfinding. No React,
@@ -172,6 +173,21 @@ of `suiteSeed`, tier, and index determines each maze; reusing the same seed and
 count therefore reproduces the same suite for another model. Increasing the
 count preserves the existing prefix in each tier and adds more mazes.
 
+Before calling a model, the runner checks `public/replay-data/runs/` for a
+completed published episode with the same suite seed, fixture hash, provider,
+requested model, reasoning effort, execution policy, and contract hashes. A
+strict match is copied into the new batch, so increasing the suite size runs
+only the newly added fixture indexes. Legacy public files without this reuse
+fingerprint are ignored. Pass `--no-public-reuse` when a fresh independent
+sample is intentional.
+
+Reasoning effort is an explicit experiment variable selected with
+`--reasoning-effort`. OpenRouter accepts `none`, `minimal`, `low`, `medium`,
+`high`, and `xhigh`; the OpenAI transport additionally accepts `max`. Individual
+models may support only a subset, in which case the provider rejects the run.
+Results from different effort levels remain separate even when every other
+field matches.
+
 When no suite seed is supplied, the runner creates one and records it in the
 manifest and summary. The complete generated snapshots are stored under
 `results/<batch>/fixtures/`. They are spectator and replay artifacts only and
@@ -189,6 +205,7 @@ Run a live 9-maze Luna batch using a named suite:
 node --env-file=.env.local benchmark/run-batch.js \
   --provider openai \
   --model gpt-5.6-luna \
+  --reasoning-effort low \
   --suite-seed luna-2026-08-29-01 \
   --mazes-per-tier 3 \
   --out results/luna-2026-08-29-01

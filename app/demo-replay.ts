@@ -30,7 +30,7 @@ export const DEMO_REPLAY_DETAIL = replay as DemoReplayDetail;
 // the browser; only the sanitized replay fields in demo-replay.json are used.
 export const DEMO_REPLAY_PROVENANCE = {
   batchId: "live-luna-r3",
-  fixtureId: "echo-maze-bench-v0-02",
+  fixtureId: "emz-v0-02",
   transcript: "benchmark/experiments/artifacts/live-luna-r3/episodes/echo-maze-bench-v0-02/transcript.jsonl",
   model: "openai/gpt-5.6-luna",
   status: "solved",

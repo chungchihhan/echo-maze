@@ -16,6 +16,12 @@ import {
   WALKER_PROMPT,
 } from "../lib/ai/walker-decision.js";
 import { MAX_ROUTE_LENGTH, MIN_ROUTE_LENGTH } from "../lib/maze/types.js";
+import {
+  BENCHMARK_ID,
+  BENCHMARK_NAME,
+  BENCHMARK_SHORT_NAME,
+  BENCHMARK_THEME,
+} from "../lib/benchmark-brand.js";
 
 export { OUTPUT_FRAMING, RESPONSE_SCHEMA, RESPONSE_SCHEMA_NAME, WALKER_PROMPT };
 
@@ -67,6 +73,10 @@ export const INTER_EPISODE_COOLDOWN_MS = 30_000;
 export const RATE_LIMIT_RETRY_BASE_MS = 30_000;
 export const MAX_OUTPUT_TOKENS_BASE = 2000;
 export const REASONING_EFFORT = "low";
+export const REASONING_EFFORTS_BY_PROVIDER = {
+  openai: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+  openrouter: ["none", "minimal", "low", "medium", "high", "xhigh"],
+};
 export const AI_TRANSPORT = {
   sdk: "Vercel AI SDK",
   coreMajor: 7,
@@ -183,7 +193,10 @@ export const RULES_HASH = sha256(RULES);
 /** Full contract descriptor embedded in every manifest. */
 export function contractDescriptor() {
   return {
-    benchmarkId: "echo-maze-benchmark",
+    benchmarkId: BENCHMARK_ID,
+    benchmarkName: BENCHMARK_NAME,
+    benchmarkShortName: BENCHMARK_SHORT_NAME,
+    benchmarkTheme: BENCHMARK_THEME,
     benchmarkVersion: BENCHMARK_VERSION,
     policyRevision: POLICY_REVISION,
     generatorVersion: GENERATOR_VERSION,

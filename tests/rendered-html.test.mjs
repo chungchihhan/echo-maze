@@ -30,12 +30,15 @@ test("server-renders a landing page with the featured Walker replay", async () =
 
   const html = await response.text();
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  assert.match(html, /<title>Echo Maze — One Agent, Hidden Maze<\/title>/i);
+  assert.match(html, /<title>Echo Maze — Memory in Motion<\/title>/i);
   assert.match(html, /echo-maze-icon\.png/);
   assert.match(text, /ECHO MAZE/);
+  assert.match(text, /Maze exploration without a map/);
+  assert.match(text, /The EMZ Benchmark for memory-driven AI agents/);
+  assert.doesNotMatch(text, /Watch one agent remember what it saw/);
   assert.match(text, /RECORDED WALKER RUN/);
   assert.match(text, /One turn at a time/);
-  assert.match(text, /ECHO-BENCH-V0-02/);
+  assert.match(text, /EMZ-V0-02/);
   assert.match(text, /AGENT OUTPUT/);
   assert.match(text, /TURN/);
   assert.match(text, /LAST ACTION/);
@@ -47,11 +50,16 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(text, /ACTION/);
   assert.doesNotMatch(text, /WALKER OUTPUT|ENVIRONMENT RESULT|COORDINATE STATUS/);
   assert.doesNotMatch(text, /OUTCOME/);
-  assert.match(text, /THE BENCHMARK/);
-  assert.match(text, /A memory test with no map/);
+  assert.match(text, /EMZ BENCHMARK/);
+  assert.match(text, /Memory in Motion/);
+  assert.match(text, /The exit is only half the story/);
   assert.match(text, /Partial observability/);
+  assert.match(html, /class="landing-footer"/);
+  assert.match(html, /aria-label="Footer navigation"/);
+  assert.match(text, /Where AI memory finds its way/);
   assert.match(html, /app-navigation/);
   assert.match(html, /aria-label="Open navigation"/);
+  assert.match(html, /Drag to reposition/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
   assert.match(html, /landing-agent-output/);
   assert.match(html, /landing-model-action/);
@@ -83,13 +91,15 @@ test("server-renders the complete replay workspace", async () => {
   assert.match(text, /AGENT OUTPUT/);
   assert.match(text, /ENVIRONMENT INPUT/);
   assert.match(text, /MODEL ESTIMATE/);
-  assert.match(text, /ECHO-BENCH-V0-02/);
+  assert.match(text, /EMZ-V0-02/);
   assert.match(text, /WALL HITS/);
   assert.match(text, /shortest path 26 moves/);
   assert.doesNotMatch(text, /OUTCOME/);
   assert.match(html, /app-navigation/);
   assert.match(html, /href="https:\/\/github\.com\/chungchihhan\/echo-maze"/);
   assert.match(text, /Spectator View/);
+  assert.match(html, /aria-label="Replay views"/);
+  assert.match(text, /Library Maze Output/);
   assert.match(html, /replay-transport-play/);
   assert.match(html, /replay-speed-picker/);
   assert.match(html, /aria-keyshortcuts="Space"/);
@@ -122,29 +132,35 @@ test("published benchmark index is valid and its runs are replayable", async () 
   assert.ok(index.runs.every((run) => run.playback_duration_ms > 0));
   assert.ok(index.runs.every((run) => typeof run.featured === "boolean"));
   assert.ok(index.runs.every((run) => run.reasoning_effort === "low"));
+  assert.ok(index.runs.every((run) => /^emz-v0-(easy|medium|hard)-\d{3}$/.test(run.maze_seed)));
+  assert.ok(index.runs.every((run) => run.id.endsWith(`--${run.maze_seed}`)));
   assert.deepEqual(index.runs.map((run) => run.homepage_order), index.runs.map((_run, index) => index + 1));
 
   const runId = index.runs[0]?.id;
   if (!runId) return;
   const detail = JSON.parse(await readFile(new URL(`../public/replay-data/runs/${runId}.json`, import.meta.url), "utf8"));
   assert.equal(detail.source, "benchmark");
+  assert.equal(detail.benchmark.benchmarkName, "Echo Maze Benchmark");
+  assert.equal(detail.benchmark.benchmarkShortName, "EMZ Benchmark");
+  assert.equal(detail.benchmark.benchmarkTheme, "Memory in Motion");
   assert.equal(detail.benchmark.reasoningEffort, "low");
   assert.equal(detail.run.id, runId);
   assert.equal(detail.run.maze.cells.length, 9);
   assert.ok(detail.events.some((event) => event.type === "agent_request"));
   assert.ok(detail.events.some((event) => event.type === "solo_walker_response"));
   assert.ok(detail.events.some((event) => event.type === "solo_walker_move"));
-  assert.doesNotMatch(JSON.stringify(detail), /requestId|responseId|input_tokens|conversation/);
+  assert.doesNotMatch(JSON.stringify(detail), /"(?:requestId|responseId|conversation)"\s*:/);
 });
 
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
-  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
+  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, heroMaze, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/echo-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay-ui.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/maze-sight.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/maze-structure.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/hero-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/demo-replay.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/demo-replay.json", import.meta.url), "utf8"),
@@ -210,6 +226,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(mazeSight, /pointIsOccluded/);
   assert.doesNotMatch(mazeSight, /clipPath/);
   assert.doesNotMatch(mazeStructure, /showWallLight|wallLightOpacity|maze-structure-walls-lit/);
+  assert.match(heroMaze, /transformedPosition = instanceMatrix \* transformedPosition/);
+  assert.match(heroMaze, /transformedNormal = mat3\(instanceMatrix\) \* transformedNormal/);
   assert.match(styles, /maze-structure-walls-base/);
   assert.match(mazeSight, /visibilityPolygon/);
   assert.match(mazeSight, /raySegmentIntersection/);

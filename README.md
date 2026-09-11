@@ -2,6 +2,9 @@
 
 Echo Maze is an observable AI-agent game about navigating without a map.
 
+Its evaluation system is the **Echo Maze Benchmark (EMZ Benchmark)**, under
+the theme **Memory in Motion**.
+
 An AI Walker begins at an unknown position inside a generated maze. It can only
 see along open corridors until a wall blocks its view. The Walker must interpret
 those observations, remember what happened in earlier turns, maintain its own
