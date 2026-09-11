@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { canMove, generateMaze, seededRandom, shortestPath, samePoint } from "../lib/maze/index.js";
+import { BENCHMARK_FIXTURE_PREFIX } from "../lib/benchmark-brand.js";
 import {
   BENCHMARK_VERSION,
   GENERATOR_VERSION,
@@ -86,7 +87,7 @@ export function generateFixtureSuite(suiteSeed, mazesPerTier) {
   return ROUTE_LENGTH_TIERS.flatMap((tier) =>
     Array.from({ length: mazesPerTier }, (_, index) => {
       const sequence = String(index + 1).padStart(3, "0");
-      const fixtureId = `echo-maze-bench-${BENCHMARK_VERSION}-${tier.id}-${sequence}`;
+      const fixtureId = `${BENCHMARK_FIXTURE_PREFIX}-${BENCHMARK_VERSION}-${tier.id}-${sequence}`;
       const mazeSeed = `${suiteSeed}:${tier.id}:${sequence}`;
       const maze = generateMaze(seededRandom(mazeSeed), mazeSeed, {
         size: 9,

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   DIRECTIONS,
   MIN_ROUTE_LENGTH,
@@ -13,6 +13,11 @@ import {
   walkerObservation as observeWalkerCell,
 } from "../lib/maze/index.js";
 import type { DirectionKey, Maze, MoveResult, Point } from "../lib/maze/types.js";
+import {
+  BENCHMARK_SHORT_NAME,
+  BENCHMARK_THEME,
+  formatBenchmarkFixtureId,
+} from "../lib/benchmark-brand.js";
 import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } from "./demo-replay";
 import { HeroMaze } from "./hero-maze";
 import { MazeSightLayer } from "./maze-sight";
@@ -111,6 +116,7 @@ type ReplayFrame = {
 type PlaybackSpeed = 0.5 | 1 | 2 | 4 | 8;
 const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 1, 2, 4, 8];
 type ReplayCueIndex = 0 | 1 | 2 | 3;
+type ReplayMobilePanel = "library" | "maze" | "output";
 type ReplayLyricCue = {
   turn: number;
   label: string;
@@ -372,12 +378,89 @@ function BrandMark({ inverse = false }: { inverse?: boolean }) {
 
 const GITHUB_REPOSITORY_URL = "https://github.com/chungchihhan/echo-maze";
 const LANDING_PATH = "/";
+const NAVIGATION_DOCK_STORAGE_KEY = "echo-maze-navigation-dock-v1";
+type NavigationDock = { edge: "top" | "right" | "bottom" | "left"; ratio: number };
+type NavigationPosition = { x: number; y: number; popoverX?: number };
+
+function navigationPosition(dock: NavigationDock, viewportWidth: number, viewportHeight: number, size: number) {
+  const margin = viewportWidth <= 680 ? 12 : 16;
+  const minX = margin;
+  const minY = margin;
+  const maxX = Math.max(minX, viewportWidth - size - margin);
+  const maxY = Math.max(minY, viewportHeight - size - margin);
+  const ratio = Math.max(0, Math.min(1, dock.ratio));
+  if (dock.edge === "top" || dock.edge === "bottom") {
+    const x = minX + (maxX - minX) * ratio;
+    const popoverWidth = Math.min(320, viewportWidth - 28);
+    const centeredOffset = size / 2 - popoverWidth / 2;
+    const minimumOffset = 14 - x;
+    const maximumOffset = viewportWidth - 14 - popoverWidth - x;
+    return {
+      x,
+      y: dock.edge === "top" ? minY : maxY,
+      popoverX: Math.max(minimumOffset, Math.min(maximumOffset, centeredOffset)),
+    };
+  }
+  if (dock.edge === "right") return { x: maxX, y: minY + (maxY - minY) * ratio };
+  return { x: minX, y: minY + (maxY - minY) * ratio };
+}
+
+function nearestNavigationDock(position: NavigationPosition, viewportWidth: number, viewportHeight: number, size: number): NavigationDock {
+  const margin = viewportWidth <= 680 ? 12 : 16;
+  const minX = margin;
+  const minY = margin;
+  const maxX = Math.max(minX, viewportWidth - size - margin);
+  const maxY = Math.max(minY, viewportHeight - size - margin);
+  const x = Math.max(minX, Math.min(maxX, position.x));
+  const y = Math.max(minY, Math.min(maxY, position.y));
+  const distances = [
+    ["top", y - minY],
+    ["right", maxX - x],
+    ["bottom", maxY - y],
+    ["left", x - minX],
+  ] as const;
+  const edge = distances.reduce((closest, candidate) => candidate[1] < closest[1] ? candidate : closest)[0];
+  const horizontalRatio = (x - minX) / Math.max(1, maxX - minX);
+  const verticalRatio = (y - minY) / Math.max(1, maxY - minY);
+  return { edge, ratio: edge === "top" || edge === "bottom" ? horizontalRatio : verticalRatio };
+}
 
 function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isBrandVisible, setIsBrandVisible] = useState(currentPath === "/");
+  const [dock, setDock] = useState<NavigationDock | null>(null);
+  const [position, setPosition] = useState<NavigationPosition | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const navigationRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; x: number; y: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const placeNavigation = useCallback((nextDock: NavigationDock) => {
+    const size = toggleRef.current?.getBoundingClientRect().width ?? (window.innerWidth <= 680 ? 44 : 48);
+    setPosition(navigationPosition(nextDock, window.innerWidth, window.innerHeight, size));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const storedDock = JSON.parse(window.localStorage.getItem(NAVIGATION_DOCK_STORAGE_KEY) ?? "null") as NavigationDock | null;
+        if (!storedDock || !["top", "right", "bottom", "left"].includes(storedDock.edge) || !Number.isFinite(storedDock.ratio)) return;
+        setDock(storedDock);
+        placeNavigation(storedDock);
+      } catch {
+        // Ignore invalid or unavailable local storage and keep the default placement.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [placeNavigation]);
+
+  useEffect(() => {
+    if (!dock) return undefined;
+    const handleResize = () => placeNavigation(dock);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [dock, placeNavigation]);
 
   useEffect(() => {
     if (currentPath !== "/") return undefined;
@@ -415,10 +498,97 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
     };
   }, [closeNavigation, isOpen]);
 
+  const handleNavigationDragStart = useCallback((event: ReactPointerEvent<HTMLButtonElement> | ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    const bounds = navigationRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    dragRef.current = {
+      pointerId: "pointerId" in event ? event.pointerId : -1,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: bounds.left,
+      originY: bounds.top,
+      x: bounds.left,
+      y: bounds.top,
+      moved: false,
+    };
+  }, []);
+
+  const handleNavigationPointerMove = useCallback((event: { pointerId?: number; clientX: number; clientY: number }) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== (event.pointerId ?? -1)) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      setIsDragging(true);
+      setIsOpen(false);
+    }
+    const size = toggleRef.current?.getBoundingClientRect().width ?? 48;
+    const margin = window.innerWidth <= 680 ? 12 : 16;
+    drag.x = Math.max(margin, Math.min(window.innerWidth - size - margin, drag.originX + deltaX));
+    drag.y = Math.max(margin, Math.min(window.innerHeight - size - margin, drag.originY + deltaY));
+    setPosition({ x: drag.x, y: drag.y });
+  }, []);
+
+  const finishNavigationDrag = useCallback((pointerId: number) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    dragRef.current = null;
+    if (!drag.moved) return;
+    const size = toggleRef.current?.getBoundingClientRect().width ?? 48;
+    const nextDock = nearestNavigationDock({ x: drag.x, y: drag.y }, window.innerWidth, window.innerHeight, size);
+    setDock(nextDock);
+    placeNavigation(nextDock);
+    setIsDragging(false);
+    suppressClickRef.current = true;
+    try {
+      window.localStorage.setItem(NAVIGATION_DOCK_STORAGE_KEY, JSON.stringify(nextDock));
+    } catch {
+      // The button still docks for this session when storage is unavailable.
+    }
+    window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+  }, [placeNavigation]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => handleNavigationPointerMove(event);
+    const handlePointerEnd = (event: PointerEvent) => finishNavigationDrag(event.pointerId);
+    const handleMouseMove = (event: MouseEvent) => handleNavigationPointerMove(event);
+    const handleMouseEnd = () => finishNavigationDrag(-1);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseEnd);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseEnd);
+    };
+  }, [finishNavigationDrag, handleNavigationPointerMove]);
+
   const linkTabIndex = isOpen ? 0 : -1;
+  const popoverHorizontal = dock?.edge === "right" || ((dock?.edge === "top" || dock?.edge === "bottom") && dock.ratio > .5) ? "right" : "left";
+  const popoverVertical = dock?.edge === "bottom" || ((dock?.edge === "left" || dock?.edge === "right") && dock.ratio > .5) ? "up" : "down";
+  const overlapsReplayTitle = currentPath === "/replay" && (!position || (position.x < 70 && position.y < 150));
 
   return (
-    <div className={`app-navigation ${isOpen ? "is-open" : ""} ${isBrandVisible ? "" : "is-brand-offscreen"}`} ref={navigationRef}>
+    <div
+      className={`app-navigation ${isOpen ? "is-open" : ""} ${isBrandVisible ? "" : "is-brand-offscreen"} ${position ? "is-user-positioned" : ""} ${isDragging ? "is-dragging" : ""}`}
+      data-dock-edge={dock?.edge}
+      data-overlaps-replay-title={overlapsReplayTitle ? "true" : undefined}
+      data-popover-horizontal={popoverHorizontal}
+      data-popover-vertical={popoverVertical}
+      ref={navigationRef}
+      style={position ? {
+        left: position.x,
+        top: position.y,
+        "--nav-popover-x": `${position.popoverX ?? 0}px`,
+      } as CSSProperties : undefined}
+    >
       <button
         ref={toggleRef}
         className="nav-menu-toggle"
@@ -426,7 +596,13 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
         aria-expanded={isOpen}
         aria-controls="echo-navigation"
         aria-label={isOpen ? "Close navigation" : "Open navigation"}
-        onClick={() => setIsOpen((value) => !value)}
+        title="Drag to reposition · Click to open menu"
+        onClick={() => {
+          if (suppressClickRef.current) return;
+          setIsOpen((value) => !value);
+        }}
+        onPointerDown={handleNavigationDragStart}
+        onMouseDown={handleNavigationDragStart}
       >
         <BrandMark inverse />
       </button>
@@ -456,6 +632,83 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
 
 type PageMode = "replay" | "lab";
 
+const HERO_MESSAGES = [
+  {
+    headline: "Maze exploration without a map.",
+    supporting: "The EMZ Benchmark for memory-driven AI agents.",
+  },
+  {
+    headline: "Find a way through the unseen.",
+    supporting: "One corridor, one decision, one memory at a time.",
+  },
+] as const;
+
+type HeroTypingPhase = "holding" | "deleting" | "typing";
+
+function useHeroTypewriter(active: boolean) {
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [typingState, setTypingState] = useState(() => ({
+    messageIndex: 0,
+    visibleCharacters: HERO_MESSAGES[0].supporting.length,
+    phase: "holding" as HeroTypingPhase,
+  }));
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(query.matches);
+    updatePreference();
+    query.addEventListener("change", updatePreference);
+    return () => query.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (!active || reducedMotion) return;
+    let delay = 48;
+
+    if (typingState.phase === "holding") {
+      delay = 2800;
+    } else if (typingState.phase === "deleting") {
+      delay = 24;
+    }
+
+    const timer = window.setTimeout(() => {
+      setTypingState((current) => {
+        if (current.phase === "holding") return { ...current, phase: "deleting" };
+        if (current.phase === "deleting") {
+          if (current.visibleCharacters > 0) {
+            return { ...current, visibleCharacters: current.visibleCharacters - 1 };
+          }
+          return {
+            messageIndex: (current.messageIndex + 1) % HERO_MESSAGES.length,
+            visibleCharacters: 0,
+            phase: "typing",
+          };
+        }
+
+        const currentMessage = HERO_MESSAGES[current.messageIndex];
+        if (current.visibleCharacters < currentMessage.supporting.length) {
+          return { ...current, visibleCharacters: current.visibleCharacters + 1 };
+        }
+        return { ...current, phase: "holding" };
+      });
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [active, reducedMotion, typingState]);
+
+  const message = HERO_MESSAGES[typingState.messageIndex];
+  const visibleCharacters = active && !reducedMotion
+    ? typingState.visibleCharacters
+    : message.supporting.length;
+  return {
+    headline: message.headline,
+    supporting: message.supporting,
+    visibleSupporting: message.supporting.slice(0, visibleCharacters),
+    headlineIsFadingOut: active && !reducedMotion && typingState.phase === "deleting",
+    showCursor: active && !reducedMotion,
+  };
+}
+
 function Masthead({ mode, onNewMaze }: { mode: PageMode; onNewMaze?: () => void }) {
   const isLab = mode === "lab";
   return (
@@ -476,6 +729,7 @@ function Masthead({ mode, onNewMaze }: { mode: PageMode; onNewMaze?: () => void 
 
 function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showReplayLink?: boolean }) {
   const isLab = mode === "lab";
+  const heroCopy = useHeroTypewriter(!isLab);
   return (
     <section className="intro-row solo-intro">
       <div className="intro-panel intro-panel-light">
@@ -486,13 +740,26 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
           </div>
         ) : null}
         {isLab ? <p className="eyebrow">CONVERSATION-ONLY MEMORY</p> : null}
-        <h1>{isLab ? <>Can one agent remember <em>the maze it cannot see?</em></> : <>Watch one agent <em>remember what it saw.</em></>}</h1>
+        {isLab ? (
+          <h1>Can one agent remember <em>the maze it cannot see?</em></h1>
+        ) : (
+          <h1 className={`hero-typewriter-title${heroCopy.headlineIsFadingOut ? " is-fading-out" : ""}`}>
+            {heroCopy.headline}
+          </h1>
+        )}
         {showReplayLink ? <a className="hero-replay-link" href="/replay">Open replay workspace <span aria-hidden="true">↗</span></a> : null}
       </div>
       <div className="intro-panel intro-panel-blue">
         <HeroMaze mazes={HERO_MAZES} />
         <div className="intro-note">
-          <p>{isLab ? <>No map. No route tool. No notebook.<br />Only observations, decisions, and outcomes from this run.</> : <>Replay the decisions, outcomes, and memory<br />from a completed Walker run.</>}</p>
+          {isLab ? (
+            <p>No map. No route tool. No notebook.<br />Only observations, decisions, and outcomes from this run.</p>
+          ) : (
+            <p className="hero-typewriter-supporting" aria-label={heroCopy.supporting}>
+              {heroCopy.visibleSupporting}
+              {heroCopy.showCursor ? <span className="hero-typewriter-caret" aria-hidden="true" /> : null}
+            </p>
+          )}
         </div>
       </div>
     </section>
@@ -815,7 +1082,7 @@ function WalkerCard({ game, showFullMap, onToggleFullMap, showTurnOutput = false
       <div className={`walker-card-body ${showTurnOutput ? "has-turn-output" : ""}`}>
         <div className="walker-card-main">
           <div className="map-heading">
-            <span>Maze {game.maze.seed} · shortest path {game.maze.routeLength} moves</span>
+            <span>Maze {formatBenchmarkFixtureId(game.maze.seed)} · shortest path {game.maze.routeLength} moves</span>
           </div>
           <MazeViewport game={game} showFullMap={showFullMap} showCaption={showMapCaption} />
           <div className="action-readout">
@@ -893,7 +1160,7 @@ function LandingReplayStage({
         <div>
           <PanelLabel>RECORDED WALKER RUN</PanelLabel>
           <h2>One turn at a time.</h2>
-          <p>Maze {decisionGame.maze.seed} · shortest path {decisionGame.maze.routeLength} moves</p>
+          <p>Maze {formatBenchmarkFixtureId(decisionGame.maze.seed)} · shortest path {decisionGame.maze.routeLength} moves</p>
         </div>
         <div className="landing-replay-actions">
           <button className="button view-toggle" type="button" aria-pressed={showFullMap} onClick={onToggleFullMap}>
@@ -942,34 +1209,48 @@ function BenchmarkIntro() {
     <section className="benchmark-section" aria-labelledby="benchmark-heading">
       <div className="benchmark-panel">
         <div className="benchmark-panel-heading">
-          <PanelLabel>THE BENCHMARK</PanelLabel>
-          <h2 id="benchmark-heading">A memory test with no map.</h2>
+          <div className="benchmark-identity">
+            <PanelLabel>{BENCHMARK_SHORT_NAME.toUpperCase()}</PanelLabel>
+            <span>{BENCHMARK_THEME}</span>
+          </div>
+          <h2 id="benchmark-heading"><span>The exit is only</span><em>half the story.</em></h2>
+          <div className="benchmark-summary">
+            <p>One Walker. One conversation. No map or route tool—only observations, memory, and a replay of every move.</p>
+            <a className="benchmark-link" href="/replay">Watch a complete run <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
-        <div className="benchmark-copy">
-          <p>Echo Maze is an observable AI-agent game about navigating without a map. The benchmark asks one Walker to find the exit from a generated maze while it can only see along open corridors until a wall blocks its view.</p>
-          <p>On every turn, the Walker interprets that limited observation, remembers what happened earlier in the current conversation, maintains its own relative coordinate system, and chooses the next move.</p>
-          <p>Every run stays reviewable. Successful and failed moves are recorded so a replay can show where the Walker built an accurate map, became confused, recovered, or failed.</p>
-          <a className="benchmark-link" href="/replay">Review a complete run <span aria-hidden="true">↗</span></a>
-        </div>
-        <div className="benchmark-principles" aria-label="Benchmark principles">
-          <article>
-            <span>01 / INPUT</span>
-            <h3>Partial observability</h3>
-            <p>Walls hide everything beyond the corridor the Walker can currently see.</p>
-          </article>
-          <article>
-            <span>02 / MEMORY</span>
-            <h3>One conversation</h3>
-            <p>No full map, route-finding tool, or external notebook is available.</p>
-          </article>
-          <article>
-            <span>03 / EVIDENCE</span>
-            <h3>Replayable runs</h3>
-            <p>Compare the agent&apos;s stated model of the world with the actual maze.</p>
-          </article>
-        </div>
+        <ol className="benchmark-rules" aria-label="Benchmark principles">
+          <li>
+            <span>01 / SEE</span>
+            <strong>Corridors only.</strong>
+            <small>Partial observability</small>
+          </li>
+          <li>
+            <span>02 / REMEMBER</span>
+            <strong>This run only.</strong>
+            <small>One conversation</small>
+          </li>
+          <li>
+            <span>03 / PROVE</span>
+            <strong>Every turn replayed.</strong>
+            <small>Visible evidence</small>
+          </li>
+        </ol>
       </div>
     </section>
+  );
+}
+
+function LandingFooter() {
+  return (
+    <footer className="landing-footer">
+      <strong>ECHO MAZE</strong>
+      <span>Where AI memory finds its way.</span>
+      <nav aria-label="Footer navigation">
+        <a href="/replay">Replay</a>
+        <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </footer>
   );
 }
 
@@ -1086,6 +1367,7 @@ export function LandingPage() {
       </section>
 
       <BenchmarkIntro />
+      <LandingFooter />
     </main>
   );
 }
@@ -1306,6 +1588,7 @@ export function LiveLab() {
 
 export function ReplayHome() {
   const [showFullMap, setShowFullMap] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<ReplayMobilePanel>("maze");
   const [replayRuns, setReplayRuns] = useState<ReplayRunSummary[]>([DEMO_REPLAY_SUMMARY]);
   const [selectedReplayConfiguration, setSelectedReplayConfiguration] = useState(replayConfigurationKey(DEMO_REPLAY_SUMMARY));
   const [selectedReplayId, setSelectedReplayId] = useState(DEMO_REPLAY_DETAIL.run.id);
@@ -1659,7 +1942,11 @@ export function ReplayHome() {
     <main className="echo-app replay-page replay-player-page">
       <AppNavigation currentPath="/replay" />
       <section className="replay-player" aria-label="Replay player">
-        <aside className="replay-player-library">
+        <aside
+          className={`replay-player-library ${mobilePanel === "library" ? "is-mobile-active" : ""}`}
+          id="replay-library-panel"
+          role="tabpanel"
+        >
           <div className="replay-player-library-head">
             <PanelLabel>REPLAY LIBRARY</PanelLabel>
             <strong>{visibleReplayRuns.length} recorded runs</strong>
@@ -1685,7 +1972,7 @@ export function ReplayHome() {
               {selectedModelGroup?.batches.map((batch) => (
                   <div className="replay-batch-group" key={batch.batchId}>
                     {batch.runs.map((run) => {
-                      const mazeLabel = run.maze_seed.replace("echo-maze-bench-v0-", "").replace(/-(\d+)$/, " $1").replaceAll("-", " ");
+                      const mazeLabel = formatBenchmarkFixtureId(run.maze_seed).replace(/^EMZ-V0-/, "").replace(/-(\d+)$/, " $1").replaceAll("-", " ").toLowerCase();
                       return (
                         <button
                           className={`replay-run-item ${run.id === selectedReplayId ? "is-selected" : ""}`}
@@ -1693,6 +1980,7 @@ export function ReplayHome() {
                           key={run.id}
                           onClick={() => {
                             setSelectedReplayConfiguration(replayConfigurationKey(run));
+                            setMobilePanel("maze");
                             void loadReplay(run.id);
                           }}
                           disabled={isReplayLoading}
@@ -1717,17 +2005,43 @@ export function ReplayHome() {
         <header className="replay-now-playing">
           <div className="replay-now-playing-title">
             <h1>{selectedReplay?.model ?? "Select a replay"}</h1>
-            <strong>{selectedReplay?.maze_seed ?? "No maze selected"}</strong>
+            <strong>{selectedReplay ? formatBenchmarkFixtureId(selectedReplay.maze_seed) : "No maze selected"}</strong>
           </div>
           <div className="replay-now-playing-meta">
             <span>{selectedReplay ? `${selectedReplay.status.replaceAll("_", " ")} · shortest path ${playbackFrame?.game.maze.routeLength ?? "—"} moves` : "Choose a run from the library"}</span>
           </div>
         </header>
 
-        <div className="replay-player-main">
+        <div className="replay-mobile-tabs" aria-label="Replay views" role="tablist">
+          {([
+            ["library", "Library"],
+            ["maze", "Maze"],
+            ["output", "Output"],
+          ] as const).map(([panel, label]) => (
+            <button
+              className={mobilePanel === panel ? "is-selected" : ""}
+              id={`replay-${panel}-tab`}
+              type="button"
+              role="tab"
+              aria-controls={`replay-${panel}-panel`}
+              aria-selected={mobilePanel === panel}
+              key={panel}
+              onClick={() => setMobilePanel(panel)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className={`replay-player-main ${mobilePanel !== "library" ? "is-mobile-active" : ""}`}>
           <div className="replay-player-main-inner">
             {playbackFrame ? (
-              <section className="replay-player-maze" aria-label="Maze playback">
+              <section
+                className={`replay-player-maze ${mobilePanel === "maze" ? "is-mobile-active" : ""}`}
+                id="replay-maze-panel"
+                role="tabpanel"
+                aria-label="Maze playback"
+              >
                 <MazeViewport
                   game={playbackFrame.game}
                   showFullMap={showFullMap}
@@ -1737,10 +2051,19 @@ export function ReplayHome() {
                 />
               </section>
             ) : (
-              <section className="replay-player-maze replay-player-empty"><span>Select a run</span></section>
+              <section
+                className={`replay-player-maze replay-player-empty ${mobilePanel === "maze" ? "is-mobile-active" : ""}`}
+                id="replay-maze-panel"
+                role="tabpanel"
+              ><span>Select a run</span></section>
             )}
 
-            <aside className="replay-player-output" aria-live="polite">
+            <aside
+              className={`replay-player-output ${mobilePanel === "output" ? "is-mobile-active" : ""}`}
+              id="replay-output-panel"
+              role="tabpanel"
+              aria-live="polite"
+            >
           <div className="replay-output-heading">
             <PanelLabel>AGENT OUTPUT</PanelLabel>
             <span>{isReplayLoading ? "Loading…" : `Turn ${String(currentThought?.turn ?? 0).padStart(2, "0")}`}</span>
@@ -1803,7 +2126,7 @@ export function ReplayHome() {
             <button className="replay-transport-play" type="button" onClick={toggleReplayPlayback} disabled={!isReplayMode || playbackFrames.length < 2} aria-label={isReplayPlaying ? "Pause replay" : "Play replay"} aria-keyshortcuts="Space" title="Play or pause · Space">{isReplayPlaying ? "Ⅱ" : "▶"}</button>
             <button type="button" onClick={() => selectAdjacentRun(1)} disabled={selectedRunIndex < 0 || selectedRunIndex >= visibleReplayRuns.length - 1} aria-label="Next run" aria-keyshortcuts="Shift+ArrowRight" title="Next run · Shift + →"><span className="replay-run-skip-icon" aria-hidden="true">▶▶</span></button>
           </div>
-          <div className="replay-current-run"><strong>{selectedReplay?.maze_seed ?? "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
+          <div className="replay-current-run"><strong>{selectedReplay ? formatBenchmarkFixtureId(selectedReplay.maze_seed) : "No run selected"}</strong><span>{currentThought ? `Turn ${currentThought.turn}` : "Waiting to begin"}</span></div>
           <div className="replay-player-options">
             <ReplaySpeedPicker value={playbackSpeed} onChange={setPlaybackSpeed} />
             <button type="button" aria-pressed={showFullMap} onClick={() => setShowFullMap((value) => !value)}>{showFullMap ? "Walker View" : "Spectator View"}</button>

@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -29,6 +29,7 @@ import {
   ROUTE_LENGTH_TIERS,
   SCHEMA_HASH,
   WALKER_PROMPT,
+  contractDescriptor,
   sha256,
 } from "../benchmark/contract.js";
 import {
@@ -51,6 +52,17 @@ import {
 } from "../benchmark/metrics.js";
 import { regenerateSummary } from "../benchmark/summarize.js";
 import { runBatch } from "../benchmark/run-batch.js";
+import {
+  encodeReusableTranscript,
+  publishedEpisodeIdentity,
+  publishedEpisodeIdentityHash,
+} from "../benchmark/published-reuse.js";
+import {
+  BENCHMARK_NAME,
+  BENCHMARK_SHORT_NAME,
+  BENCHMARK_THEME,
+  formatBenchmarkFixtureId,
+} from "../lib/benchmark-brand.js";
 
 function openAIResponse({ id, status = "completed", model = "gpt-5.6-luna", text = null, usage = null }) {
   return {
@@ -78,11 +90,13 @@ function openAIResponse({ id, status = "completed", model = "gpt-5.6-luna", text
 }
 
 test("maze core is deterministic and semantically stable", () => {
-  const a = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
-  const b = generateMaze(seededRandom("ECHO-BENCH-V0-01"), "ECHO-BENCH-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
+  const a = generateMaze(seededRandom("EMZ-V0-01"), "EMZ-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
+  const b = generateMaze(seededRandom("EMZ-V0-01"), "EMZ-V0-01", { size: 9, minRouteLength: 24, maxRouteLength: 31 });
   assert.deepEqual(a.cells, b.cells);
   assert.deepEqual(a.start, b.start);
   assert.deepEqual(a.exit, b.exit);
+  assert.equal(formatBenchmarkFixtureId("emz-v0-02"), "EMZ-V0-02");
+  assert.equal(formatBenchmarkFixtureId("custom-maze-seed"), "custom-maze-seed");
   assert.ok(a.routeLength >= 24);
   assert.ok(a.routeLength <= 31);
 
@@ -165,6 +179,30 @@ test("generated v0 suites are deterministic, stratified, unique, and BFS-verifie
     "deepseek/deepseek-v4-flash-0731",
     "z-ai/glm-5.3-flash",
   ]);
+});
+
+test("published reuse identity survives suite expansion but separates effort", () => {
+  const fixture = generateFixtureSuite("reuse-suite", 1)[0];
+  const base = {
+    ...contractDescriptor(),
+    mode: "live",
+    resultClass: "official",
+    provider: "openrouter",
+    apiEndpoint: "https://openrouter.ai/api/v1/chat/completions",
+    modelRequested: "openai/gpt-5.6-luna",
+    suiteSeed: "reuse-suite",
+    mazesPerTier: 3,
+    fixtureOrder: [fixture.fixtureId],
+  };
+  const expanded = { ...base, mazesPerTier: 6, fixtureOrder: [fixture.fixtureId, "another"] };
+  assert.equal(
+    publishedEpisodeIdentityHash(base, fixture),
+    publishedEpisodeIdentityHash(expanded, fixture),
+  );
+  assert.notEqual(
+    publishedEpisodeIdentityHash(base, fixture),
+    publishedEpisodeIdentityHash({ ...base, reasoningEffort: "medium" }, fixture),
+  );
 });
 
 test("policy v0.1: a visibly blocked direction is a wall hit, not a termination", async () => {
@@ -262,7 +300,7 @@ test("metrics are reproducible from event logs with correct accounting", () => {
 });
 
 test("mock dry-run pipeline completes 9 isolated episodes and summaries regenerate", async () => {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "echo-bench-test-"));
+  const tempDir = await mkdtemp(path.join(tmpdir(), "emz-test-"));
   try {
     const { batchDir, summary, outcomes } = await runBatch({
       dryRun: true,
@@ -277,6 +315,7 @@ test("mock dry-run pipeline completes 9 isolated episodes and summaries regenera
       assert.ok(["solved", "unsolved_max_turns"].includes(outcome.status), outcome.status);
     }
     assert.equal(summary.mode, "dry-run");
+    assert.equal(summary.reasoningEffort, "low");
     assert.equal(summary.liveApiCall, false);
     assert.equal(summary.episodes.length, 9);
     assert.equal(summary.difficultyTiers.easy.totalEpisodes, 3);
@@ -287,6 +326,9 @@ test("mock dry-run pipeline completes 9 isolated episodes and summaries regenera
     // Manifest records the full contract.
     const manifest = JSON.parse(await readFile(path.join(batchDir, "manifest.json"), "utf8"));
     assert.equal(manifest.benchmarkVersion, "v0");
+    assert.equal(manifest.benchmarkName, BENCHMARK_NAME);
+    assert.equal(manifest.benchmarkShortName, BENCHMARK_SHORT_NAME);
+    assert.equal(manifest.benchmarkTheme, BENCHMARK_THEME);
     assert.equal(manifest.modelRequested, "gpt-5.6-luna");
     assert.equal(manifest.modelReturned, "mock-explorer");
     assert.deepEqual(manifest.modelsReturned, ["mock-explorer"]);
@@ -299,12 +341,15 @@ test("mock dry-run pipeline completes 9 isolated episodes and summaries regenera
     assert.equal(manifest.suiteSeed, "test-suite");
     assert.equal(manifest.mazesPerTier, 3);
     assert.ok(manifest.fixtureOrder.length === 9);
+    assert.ok(manifest.fixtureOrder.every((fixtureId) => /^emz-v0-(easy|medium|hard)-\d{3}$/.test(fixtureId)));
     assert.ok(manifest.promptHash && manifest.schemaHash && manifest.rulesHash && manifest.fixtureSetHash);
 
     // Summaries must be regenerable from raw artifacts alone.
     const regenerated = await regenerateSummary(batchDir);
     assert.equal(regenerated.solved, summary.solved);
     assert.equal(regenerated.resultClass, "exploratory");
+    assert.equal(regenerated.benchmarkShortName, BENCHMARK_SHORT_NAME);
+    assert.equal(regenerated.benchmarkTheme, BENCHMARK_THEME);
     assert.equal(regenerated.successRate, summary.successRate);
     assert.deepEqual(regenerated.totals, summary.totals);
     assert.deepEqual(regenerated.latency, summary.latency);
@@ -491,7 +536,7 @@ test("OpenAI adapter forwards requested model and doubles incomplete-output budg
 });
 
 test("resume refuses incompatible manifests and preserves the original metadata", async () => {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "echo-bench-resume-test-"));
+  const tempDir = await mkdtemp(path.join(tmpdir(), "emz-resume-test-"));
   try {
     await runBatch({
       dryRun: true,
@@ -529,6 +574,66 @@ test("resume refuses incompatible manifests and preserves the original metadata"
   }
 });
 
+test("an expanded suite reuses matching published episodes and runs only new fixtures", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "emz-public-reuse-test-"));
+  const firstDir = path.join(root, "first");
+  const expandedDir = path.join(root, "expanded");
+  const publicDir = path.join(root, "public-replay-data");
+  try {
+    await runBatch({
+      dryRun: true,
+      batchId: "reuse-first",
+      outDir: firstDir,
+      suiteSeed: "reuse-suite",
+      mazesPerTier: 1,
+      reusePublic: false,
+    });
+    const manifest = JSON.parse(await readFile(path.join(firstDir, "manifest.json"), "utf8"));
+    const fixtures = generateFixtureSuite("reuse-suite", 1);
+    await mkdir(path.join(publicDir, "runs"), { recursive: true });
+    for (const fixture of fixtures) {
+      const raw = await readFile(
+        path.join(firstDir, "episodes", fixture.fixtureId, "transcript.jsonl"),
+        "utf8",
+      );
+      const events = raw.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      const transcript = encodeReusableTranscript(events);
+      const identity = publishedEpisodeIdentity(manifest, fixture);
+      const detail = {
+        benchmark: { reuse: {
+          identity,
+          identityHash: publishedEpisodeIdentityHash(manifest, fixture),
+          transcriptHash: sha256(transcript),
+          transcript,
+        } },
+        run: { id: `published--${fixture.fixtureId}`, updatedAt: 1 },
+      };
+      await writeFile(
+        path.join(publicDir, "runs", `${fixture.fixtureId}.json`),
+        `${JSON.stringify(detail)}\n`,
+      );
+    }
+
+    const expanded = await runBatch({
+      dryRun: true,
+      batchId: "reuse-expanded",
+      outDir: expandedDir,
+      suiteSeed: "reuse-suite",
+      mazesPerTier: 2,
+      publicReplayDir: publicDir,
+    });
+    assert.equal(expanded.outcomes.length, 6);
+    assert.equal(expanded.outcomes.filter((outcome) => outcome.reused).length, 3);
+    assert.deepEqual(
+      expanded.outcomes.filter((outcome) => outcome.reused).map((outcome) => outcome.fixtureId),
+      ["emz-v0-easy-001", "emz-v0-medium-001", "emz-v0-hard-001"],
+    );
+    assert.equal(expanded.summary.recordedEpisodes, 6);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("OpenRouter adapter retries length-truncated output with doubled budget", async () => {
   /** @type {any[]} */
   const bodies = [];
@@ -554,6 +659,7 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
   const adapter = createOpenRouterAdapter("test-key-not-a-secret", {
     fetchImpl,
     model: requestedModel,
+    reasoningEffort: "medium",
     retryDelayImpl: async () => {},
     pacingMs: 0,
     timeoutMs: 1000,
@@ -562,6 +668,10 @@ test("OpenRouter adapter retries length-truncated output with doubled budget", a
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].max_tokens, 2000);
   assert.equal(bodies[1].max_tokens, 4000);
+  assert.deepEqual(bodies.map((body) => body.reasoning), [
+    { effort: "medium" },
+    { effort: "medium" },
+  ]);
   assert.equal(result.attempts[0].errorCategory, "incomplete_output");
   assert.deepEqual(result.attempts.map((attempt) => attempt.modelRequested), [requestedModel, requestedModel]);
   assert.equal(result.error, null);
