@@ -203,12 +203,12 @@ Run a live 9-maze Luna batch using a named suite:
 
 ```bash
 node --env-file=.env.local benchmark/run-batch.js \
-  --provider openai \
-  --model gpt-5.6-luna \
+  --provider openrouter \
+  --model openai/gpt-5.6-luna \
   --reasoning-effort low \
-  --suite-seed luna-2026-08-29-01 \
+  --suite-seed emz-public-v0 \
   --mazes-per-tier 3 \
-  --out results/luna-2026-08-29-01
+  --out results/emz-public-v0--openai-gpt-5.6-luna--low--9
 ```
 
 Use the same `--suite-seed` and `--mazes-per-tier` when comparing another
@@ -231,14 +231,17 @@ batch available to the homepage and Replay Library, publish it into the static
 replay dataset:
 
 ```bash
-npm run replay:publish -- results/luna-2026-08-29-01
+npm run replay:publish -- results/emz-public-v0--openai-gpt-5.6-luna--low--9
 ```
 
-Use the relevant batch directory in place of `luna-2026-08-29-01`. Publishing
+Use the relevant batch directory in place of the Luna example. Publishing
 converts solved, failed, and max-turn episodes into the public replay format,
-writes individual runs under `public/replay-data/runs/`, and replaces
-`public/replay-data/index.json` with an index for the selected batch. It does
-not call a model or rerun the benchmark.
+writes individual runs under `public/replay-data/runs/`, and merges the batch
+into `public/replay-data/index.json`. Runs from other models and batches remain
+indexed. Publishing the same batch again replaces entries with matching run
+IDs in place, preserving their curation and ordering instead of creating
+duplicates; a different batch ID is appended as a separate set of replays. It
+does not call a model or rerun the benchmark.
 
 Refresh the browser after publishing. If the development server does not pick
 up the static asset changes, restart it with `npm run dev`. Unlike `results/`,
