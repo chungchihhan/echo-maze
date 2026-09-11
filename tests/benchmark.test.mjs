@@ -176,6 +176,7 @@ test("generated v0 suites are deterministic, stratified, unique, and BFS-verifie
     "gpt-5.6-luna",
     "openai/gpt-5.6-luna",
     "deepseek/deepseek-v4.1-flash",
+    "x-ai/grok-4.6",
     "stealth/ox-alpha",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "deepseek/deepseek-v4-flash-0731",
