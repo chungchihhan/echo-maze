@@ -57,6 +57,7 @@ import {
   publishedEpisodeIdentity,
   publishedEpisodeIdentityHash,
 } from "../benchmark/published-reuse.js";
+import { mergePublishedRuns } from "../benchmark/publish-replays.js";
 import {
   BENCHMARK_NAME,
   BENCHMARK_SHORT_NAME,
@@ -204,6 +205,23 @@ test("published reuse identity survives suite expansion but separates effort", (
     publishedEpisodeIdentityHash(base, fixture),
     publishedEpisodeIdentityHash({ ...base, reasoningEffort: "medium" }, fixture),
   );
+});
+
+test("publishing a batch preserves other indexed models and replaces matching runs", () => {
+  const existing = [
+    { id: "luna-1", model: "openai/gpt-5.6-luna", homepage_order: 1 },
+    { id: "deepseek-1", model: "old-model", homepage_order: 2 },
+  ];
+  const published = [
+    { id: "deepseek-1", model: "deepseek/deepseek-v4.1-flash", homepage_order: 2 },
+    { id: "deepseek-2", model: "deepseek/deepseek-v4.1-flash", homepage_order: 3 },
+  ];
+
+  assert.deepEqual(mergePublishedRuns(existing, published), [
+    existing[0],
+    published[0],
+    published[1],
+  ]);
 });
 
 test("policy v0.1: a visibly blocked direction is a wall hit, not a termination", async () => {

@@ -236,9 +236,12 @@ npm run replay:publish -- results/luna-2026-08-29-01
 
 Use the relevant batch directory in place of `luna-2026-08-29-01`. Publishing
 converts solved, failed, and max-turn episodes into the public replay format,
-writes individual runs under `public/replay-data/runs/`, and replaces
-`public/replay-data/index.json` with an index for the selected batch. It does
-not call a model or rerun the benchmark.
+writes individual runs under `public/replay-data/runs/`, and merges the batch
+into `public/replay-data/index.json`. Runs from other models and batches remain
+indexed. Publishing the same batch again replaces entries with matching run
+IDs in place, preserving their curation and ordering instead of creating
+duplicates; a different batch ID is appended as a separate set of replays. It
+does not call a model or rerun the benchmark.
 
 Refresh the browser after publishing. If the development server does not pick
 up the static asset changes, restart it with `npm run dev`. Unlike `results/`,
