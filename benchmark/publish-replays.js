@@ -130,16 +130,22 @@ async function main() {
   const manifest = JSON.parse(await readFile(path.join(source, "manifest.json"), "utf8"));
   await mkdir(path.join(out, "runs"), { recursive: true });
   const runs = [];
+  let existingRuns = [];
   let existingCuration = new Map();
   try {
     const existingIndex = JSON.parse(await readFile(path.join(out, "index.json"), "utf8"));
-    existingCuration = new Map((existingIndex.runs ?? []).map((run) => [run.id, {
+    existingRuns = existingIndex.runs ?? [];
+    existingCuration = new Map(existingRuns.map((run) => [run.id, {
       featured: run.featured,
       homepageOrder: run.homepage_order,
     }]));
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
   }
+  let nextHomepageOrder = existingRuns.reduce(
+    (highest, run) => Math.max(highest, Number.isFinite(run.homepage_order) ? run.homepage_order : 0),
+    0,
+  ) + 1;
 
   for (const fixtureId of manifest.fixtureOrder ?? []) {
     const episodeDir = path.join(source, "episodes", fixtureId);
@@ -228,12 +234,25 @@ async function main() {
       reasoning_effort: manifest.reasoningEffort ?? null,
       playback_duration_ms: playbackDuration,
       featured: curation?.featured ?? true,
-      homepage_order: curation?.homepageOrder ?? runs.length + 1,
+      homepage_order: curation?.homepageOrder ?? nextHomepageOrder++,
     });
   }
 
-  await writeFile(path.join(out, "index.json"), `${JSON.stringify({ version: 1, runs }, null, 2)}\n`);
-  console.log(`Published ${runs.length} replay(s) from ${manifest.batchId} to ${out}`);
+  const mergedRuns = mergePublishedRuns(existingRuns, runs);
+  await writeFile(path.join(out, "index.json"), `${JSON.stringify({ version: 1, runs: mergedRuns }, null, 2)}\n`);
+  console.log(`Published ${runs.length} replay(s) from ${manifest.batchId} to ${out} (${mergedRuns.length} indexed total)`);
+}
+
+export function mergePublishedRuns(existingRuns, publishedRuns) {
+  const publishedIds = new Set(publishedRuns.map((run) => run.id));
+  return [
+    ...existingRuns.filter((run) => !publishedIds.has(run.id)),
+    ...publishedRuns,
+  ].sort((left, right) => {
+    const leftOrder = Number.isFinite(left.homepage_order) ? left.homepage_order : Number.MAX_SAFE_INTEGER;
+    const rightOrder = Number.isFinite(right.homepage_order) ? right.homepage_order : Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder;
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
