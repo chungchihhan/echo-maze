@@ -153,7 +153,7 @@ test("published benchmark index is valid and its runs are replayable", async () 
 });
 
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
-  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, heroMaze, styles, demoSource, demoDataSource, route, replayRoute, schema, hosting, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
+  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, heroMaze, styles, demoSource, demoDataSource, route, replayRoute, schema, wranglerSource, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/echo-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay/page.tsx", import.meta.url), "utf8"),
@@ -167,7 +167,7 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
     readFile(new URL("../app/api/agent/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/replays/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
+    readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../lib/maze/index.js", import.meta.url), "utf8"),
@@ -259,10 +259,18 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   // Persistence, hosting, and runtime boundaries remain compatible.
   assert.match(replayRoute, /CREATE TABLE IF NOT EXISTS replay_runs/);
   assert.match(replayRoute, /CREATE TABLE IF NOT EXISTS replay_events/);
+  assert.match(route, /ENABLE_LIVE_API !== "true"/);
+  assert.match(replayRoute, /ENABLE_LIVE_API.*=== "true"/s);
   assert.match(schema, /replayRuns/);
   assert.match(schema, /replayEvents/);
-  assert.equal(JSON.parse(hosting).d1, "DB");
+  const wrangler = JSON.parse(wranglerSource);
+  assert.equal(wrangler.name, "echo-maze");
+  assert.equal(wrangler.vars.ENABLE_LIVE_API, "false");
+  assert.equal("d1_databases" in wrangler, false);
+  assert.equal("images" in wrangler, false);
   assert.match(layout, /Echo Maze/);
+  assert.match(packageJson, /"preview"/);
+  assert.match(packageJson, /"deploy"/);
   assert.match(packageJson, /"benchmark:run"/);
   assert.match(packageJson, /"benchmark:verify"/);
   assert.match(packageJson, /"replay:publish"/);

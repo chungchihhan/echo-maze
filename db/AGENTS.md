@@ -14,7 +14,7 @@ This module defines the durable replay data model and exposes the D1-backed Driz
 - `db/index.ts` — D1 binding guard and Drizzle client factory
 - `drizzle/` — checked-in migration history and metadata
 - `app/api/replays/route.ts` — runtime SQL/table compatibility boundary
-- `.openai/hosting.json` — `DB` binding name used by the application
+- `wrangler.jsonc` — add the `DB` binding here when live persistence is enabled
 
 ## Architecture and boundaries
 

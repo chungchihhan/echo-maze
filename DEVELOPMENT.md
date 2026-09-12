@@ -12,7 +12,7 @@
 - **Cloudflare D1** for durable run and event storage
 - **Drizzle ORM and Drizzle Kit** for the D1 schema and migrations
 - **CSS** in `app/globals.css` for most of the visual design
-- **OpenAI Sites** and Cloudflare for hosting
+- **Cloudflare Workers** for hosting
 
 Vinext provides familiar Next.js-style files such as `app/page.tsx` and API
 route handlers while producing a Vite-powered Cloudflare Worker application.
@@ -23,7 +23,8 @@ This repository is therefore not running the standard Next.js runtime.
 Requirements:
 
 - Node.js 22.13 or newer
-- An OpenAI API key with API billing enabled
+- An OpenAI API key with API billing enabled only when intentionally enabling
+  the retained live agent API
 
 Install dependencies:
 
@@ -38,6 +39,7 @@ cp .env.example .env.local
 ```
 
 ```dotenv
+ENABLE_LIVE_API=false
 OPENAI_API_KEY=your_api_key_here
 ```
 
@@ -57,6 +59,7 @@ The development server normally opens at `http://localhost:3000`.
 ```bash
 npm run dev          # Start the local development server
 npm run build        # Create and validate the production build
+npm run preview      # Preview the build in the Cloudflare Workers runtime
 npm test             # Build and run repository tests
 npm run lint         # Run ESLint
 npm run db:generate  # Generate Drizzle migrations after schema changes
@@ -79,7 +82,7 @@ npm run db:generate  # Generate Drizzle migrations after schema changes
 - `db/index.ts` exposes the Drizzle D1 client.
 - `worker/index.ts` is the Cloudflare Worker entry point.
 - `vite.config.ts` combines Vinext, Sites, and Cloudflare Vite integration.
-- `.openai/hosting.json` declares the Sites project and its `DB` D1 binding.
+- `wrangler.jsonc` configures direct Cloudflare Workers deployment.
 
 ## Game and agent flow
 
@@ -254,9 +257,28 @@ live experiment records live in `benchmark/experiments/`.
 
 ## Deployment
 
-The repository is configured for OpenAI Sites with a Cloudflare Worker runtime
-and D1 persistence. Hosted environments must provide `OPENAI_API_KEY`; the D1
-binding is declared in `.openai/hosting.json`.
+The default direct Cloudflare deployment is a read-only public showcase. It
+serves the homepage, Replay Center, shareable replay pages, and the published
+JSON under `public/replay-data/`. The deployment does not need a model API key,
+D1 database, R2 bucket, or Images binding.
+
+`wrangler.jsonc` keeps `ENABLE_LIVE_API=false`, so `/api/agent` and
+`/api/replays` return `404` even if someone calls them directly. Do not enable
+the flag on a public deployment until authentication, usage limits, and the
+required secrets and D1 binding have been added.
+
+After authenticating Wrangler with the intended Cloudflare account, deploy the
+current validated source with:
+
+```bash
+npm run deploy
+```
+
+The first deployment is available on the account's `workers.dev` subdomain.
+A custom domain can be attached later in the Worker's **Settings > Domains &
+Routes** page. Cloudflare Workers Builds may also be connected to the GitHub
+repository after the manual deployment has been verified.
+
 
 ## Agent contributor instructions
 

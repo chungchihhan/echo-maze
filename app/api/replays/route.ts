@@ -67,6 +67,10 @@ function database() {
   return db;
 }
 
+function liveApiEnabled() {
+  return (env as unknown as { ENABLE_LIVE_API?: string }).ENABLE_LIVE_API === "true";
+}
+
 async function ensureReplayTables(db: D1Database) {
   await db.batch([
     db.prepare(`
@@ -121,6 +125,8 @@ function compactEventPayload(type: string, payload: unknown) {
 }
 
 export async function GET(request: Request) {
+  if (!liveApiEnabled()) return json({ error: "Not found." }, 404);
+
   try {
     const db = database();
     await ensureReplayTables(db);
@@ -194,6 +200,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!liveApiEnabled()) return json({ error: "Not found." }, 404);
+
   let payload: ReplayAction;
   try {
     payload = (await request.json()) as ReplayAction;

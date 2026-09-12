@@ -14,7 +14,7 @@ This module is the server boundary for model calls and durable replay storage. I
 - `lib/ai/` — shared OpenAI/OpenRouter provider transport plus the Walker prompt and JSON schema
 - `app/api/replays/route.ts` — D1 table setup, replay run/event writes, listing, compact playback, and export response
 - `db/schema.ts` — Drizzle representation of the replay tables
-- `.openai/hosting.json` — configured `DB` binding
+- `wrangler.jsonc` — add the `DB` binding here when live replay persistence is enabled
 - `tests/rendered-html.test.mjs` — current server-rendered product-shell assertions
 
 ## Architecture and boundaries
