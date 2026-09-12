@@ -230,6 +230,7 @@ async function main() {
       wall_hits: summary.metrics.wallHits,
       spl: summary.metrics.spl,
       batch_id: manifest.batchId,
+      suite_seed: manifest.suiteSeed,
       policy_revision: manifest.policyRevision,
       reasoning_effort: manifest.reasoningEffort ?? null,
       playback_duration_ms: playbackDuration,

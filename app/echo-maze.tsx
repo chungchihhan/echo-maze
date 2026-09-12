@@ -99,6 +99,7 @@ type ReplayRunSummary = {
   had_error: number;
   spl?: number;
   batch_id?: string;
+  suite_seed?: string;
   reasoning_effort?: string | null;
   successful_moves?: number;
   wall_hits?: number;
@@ -332,6 +333,35 @@ const DEMO_REPLAY_SUMMARY: ReplayRunSummary = {
 
 function replayConfigurationKey(run: ReplayRunSummary) {
   return `${run.model}::${run.reasoning_effort ?? "unspecified"}`;
+}
+
+function replayModelIdentity(model: string) {
+  const separator = model.indexOf("/");
+  const provider = separator > 0 ? model.slice(0, separator) : "direct";
+  const modelName = separator > 0 ? model.slice(separator + 1) : model;
+  const providerLabel = (provider === "direct" && modelName.startsWith("gpt-")) ? "OpenAI" : ({
+    openai: "OpenAI",
+    deepseek: "DeepSeek",
+    "x-ai": "xAI",
+  }[provider] ?? provider.replaceAll("-", " "));
+  const displayName = modelName
+    .split("-")
+    .map((part) => {
+      if (part.toLowerCase() === "gpt") return "GPT";
+      if (part.toLowerCase() === "deepseek") return "DeepSeek";
+      if (part.toLowerCase() === "grok") return "Grok";
+      if (/^v\d/i.test(part)) return `V${part.slice(1)}`;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+  return { displayName, providerLabel };
+}
+
+function replaySuiteSeed(run: ReplayRunSummary) {
+  if (run.suite_seed) return run.suite_seed;
+  const batchSeparator = run.batch_id?.indexOf("--") ?? -1;
+  if (run.batch_id && batchSeparator > 0) return run.batch_id.slice(0, batchSeparator);
+  return run.is_demo ? "bundled-demo" : "unspecified-suite";
 }
 
 class AgentRequestError extends Error {
@@ -931,6 +961,86 @@ function ReplaySpeedPicker({ value, onChange }: { value: PlaybackSpeed; onChange
             >
               <span>{speed}×</span>
               {value === speed ? <i aria-hidden="true">●</i> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ReplaySuitePicker({
+  suites,
+  value,
+  onChange,
+  onOpenChange,
+}: {
+  suites: Array<{ seed: string; runs: ReplayRunSummary[] }>;
+  value: string;
+  onChange: (suiteSeed: string) => void;
+  onOpenChange: (isOpen: boolean) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+        onOpenChange(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsOpen(false);
+      onOpenChange(false);
+      pickerRef.current?.querySelector<HTMLButtonElement>(".replay-suite-trigger")?.focus();
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePress);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePress);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen, onOpenChange]);
+
+  return (
+    <div className={`replay-suite-picker ${isOpen ? "is-open" : ""}`} ref={pickerRef}>
+      <button
+        className="replay-suite-trigger"
+        type="button"
+        aria-label={`Runs from suite ${value}`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => {
+          const nextOpen = !isOpen;
+          setIsOpen(nextOpen);
+          onOpenChange(nextOpen);
+        }}
+      >
+        <span>RUNS</span>
+        <svg aria-hidden="true" viewBox="0 0 12 12">
+          <path d="m2.5 4.25 3.5 3.5 3.5-3.5" />
+        </svg>
+      </button>
+      {isOpen ? (
+        <div className="replay-suite-menu" role="listbox" aria-label="Benchmark suite seed">
+          {suites.map((suite) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === suite.seed}
+              className={value === suite.seed ? "is-selected" : ""}
+              key={suite.seed}
+              onClick={() => {
+                onChange(suite.seed);
+                setIsOpen(false);
+                onOpenChange(false);
+              }}
+            >
+              <span><strong>{suite.seed}</strong><small>{suite.runs.length} runs</small></span>
+              {value === suite.seed ? <i aria-hidden="true">●</i> : null}
             </button>
           ))}
         </div>
@@ -1590,6 +1700,8 @@ export function ReplayHome() {
   const [showFullMap, setShowFullMap] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<ReplayMobilePanel>("maze");
   const [replayRuns, setReplayRuns] = useState<ReplayRunSummary[]>([DEMO_REPLAY_SUMMARY]);
+  const [selectedReplaySuite, setSelectedReplaySuite] = useState(replaySuiteSeed(DEMO_REPLAY_SUMMARY));
+  const [isReplaySuiteMenuOpen, setIsReplaySuiteMenuOpen] = useState(false);
   const [selectedReplayConfiguration, setSelectedReplayConfiguration] = useState(replayConfigurationKey(DEMO_REPLAY_SUMMARY));
   const [selectedReplayId, setSelectedReplayId] = useState(DEMO_REPLAY_DETAIL.run.id);
   const [playbackFrames, setPlaybackFrames] = useState<ReplayFrame[]>(DEMO_REPLAY_FRAMES);
@@ -1674,6 +1786,7 @@ export function ReplayHome() {
       setReplayLibraryError(null);
       if (!initialReplayLoadedRef.current) {
         initialReplayLoadedRef.current = true;
+        setSelectedReplaySuite(replaySuiteSeed(publishedRuns[0]));
         setSelectedReplayConfiguration(replayConfigurationKey(publishedRuns[0]));
         await loadReplay(publishedRuns[0].id);
       }
@@ -1725,13 +1838,26 @@ export function ReplayHome() {
     () => replayRuns.filter((run) => run.is_demo || (run.max_turn ?? 0) > 0),
     [replayRuns],
   );
+  const replaySuites = useMemo(() => {
+    const suites = new Map<string, ReplayRunSummary[]>();
+    for (const run of visibleReplayRuns) {
+      const suiteSeed = replaySuiteSeed(run);
+      const suiteRuns = suites.get(suiteSeed) ?? [];
+      suiteRuns.push(run);
+      suites.set(suiteSeed, suiteRuns);
+    }
+    return [...suites.entries()].map(([seed, runs]) => ({ seed, runs }));
+  }, [visibleReplayRuns]);
+  const selectedSuiteGroup = replaySuites.find((suite) => suite.seed === selectedReplaySuite)
+    ?? replaySuites[0]
+    ?? null;
   const replayGroups = useMemo(() => {
     const configurations = new Map<string, {
       model: string;
       reasoningEffort: string | null;
       batches: Map<string, ReplayRunSummary[]>;
     }>();
-    for (const run of visibleReplayRuns) {
+    for (const run of selectedSuiteGroup?.runs ?? []) {
       const key = replayConfigurationKey(run);
       const batchId = run.batch_id ?? run.id.split("--")[0] ?? "Published benchmark";
       const configuration = configurations.get(key) ?? {
@@ -1751,7 +1877,7 @@ export function ReplayHome() {
       reasoningEffort: configuration.reasoningEffort,
       batches: [...configuration.batches.entries()].map(([batchId, runs]) => ({ batchId, runs })),
     }));
-  }, [visibleReplayRuns]);
+  }, [selectedSuiteGroup]);
   const selectedModelGroup = replayGroups.find((group) => group.key === selectedReplayConfiguration)
     ?? replayGroups[0]
     ?? null;
@@ -1777,7 +1903,8 @@ export function ReplayHome() {
   }), [replayThoughts]);
   const currentThoughtIndex = currentThought ? replayThoughts.findIndex((thought) => thought.turn === currentThought.turn) : -1;
   const activeLyricCueIndex = currentThoughtIndex < 0 ? 0 : currentThoughtIndex * 4 + activeCueIndex;
-  const selectedRunIndex = visibleReplayRuns.findIndex((run) => run.id === selectedReplayId);
+  const suiteReplayRuns = useMemo(() => selectedSuiteGroup?.runs ?? [], [selectedSuiteGroup]);
+  const selectedRunIndex = suiteReplayRuns.findIndex((run) => run.id === selectedReplayId);
   const playbackProgress = playbackFrames.length > 1 ? playbackIndex / (playbackFrames.length - 1) * 100 : 0;
   const visibleCueIndexes = cueVirtualization.replayId === selectedReplayId
     ? cueVirtualization.visibleCueIndexes
@@ -1897,12 +2024,20 @@ export function ReplayHome() {
   }, [isReplayPlaying, playbackFrames.length, playbackIndex]);
 
   const selectAdjacentRun = useCallback((offset: -1 | 1) => {
-    const adjacentRun = visibleReplayRuns[selectedRunIndex + offset];
+    const adjacentRun = suiteReplayRuns[selectedRunIndex + offset];
     if (adjacentRun) {
       setSelectedReplayConfiguration(replayConfigurationKey(adjacentRun));
       void loadReplay(adjacentRun.id);
     }
-  }, [loadReplay, selectedRunIndex, visibleReplayRuns]);
+  }, [loadReplay, selectedRunIndex, suiteReplayRuns]);
+
+  const selectReplaySuite = useCallback((suiteSeed: string) => {
+    setSelectedReplaySuite(suiteSeed);
+    const firstRun = replaySuites.find((suite) => suite.seed === suiteSeed)?.runs[0];
+    if (!firstRun) return;
+    setSelectedReplayConfiguration(replayConfigurationKey(firstRun));
+    void loadReplay(firstRun.id);
+  }, [loadReplay, replaySuites]);
 
   useEffect(() => {
     const handleReplayShortcut = (event: KeyboardEvent) => {
@@ -1954,28 +2089,39 @@ export function ReplayHome() {
           <div className="replay-run-list">
             <nav className="replay-model-list" aria-label="Models">
               <span className="replay-library-column-label">MODELS</span>
-              {replayGroups.map((modelGroup) => (
+              {replayGroups.map((modelGroup) => {
+                const identity = replayModelIdentity(modelGroup.model);
+                return (
                   <button
                     className={modelGroup.key === selectedModelGroup?.key ? "is-selected" : ""}
                     type="button"
                     key={modelGroup.key}
                     onClick={() => setSelectedReplayConfiguration(modelGroup.key)}
                     aria-pressed={modelGroup.key === selectedModelGroup?.key}
+                    title={`${modelGroup.model} · reasoning ${modelGroup.reasoningEffort ?? "not specified"}`}
                   >
-                    <strong>{modelGroup.model}</strong>
-                    <small>Reasoning · {modelGroup.reasoningEffort?.toUpperCase() ?? "NOT SPECIFIED"}</small>
+                    <strong>{identity.displayName}</strong>
+                    <small><span>{identity.providerLabel}</span><i>·</i><span>{modelGroup.reasoningEffort ? `${modelGroup.reasoningEffort.toUpperCase()} EFFORT` : "EFFORT N/A"}</span></small>
                   </button>
-                ))}
+                );
+              })}
             </nav>
-            <div className="replay-model-runs">
-              <span className="replay-library-column-label">RUNS</span>
+            <div className={`replay-model-runs ${isReplaySuiteMenuOpen ? "is-suite-menu-open" : ""}`}>
+              <div className="replay-library-column-label replay-suite-column-label">
+                <ReplaySuitePicker
+                  suites={replaySuites}
+                  value={selectedSuiteGroup?.seed ?? ""}
+                  onChange={selectReplaySuite}
+                  onOpenChange={setIsReplaySuiteMenuOpen}
+                />
+              </div>
               {selectedModelGroup?.batches.map((batch) => (
                   <div className="replay-batch-group" key={batch.batchId}>
                     {batch.runs.map((run) => {
                       const mazeLabel = formatBenchmarkFixtureId(run.maze_seed).replace(/^EMZ-V0-/, "").replace(/-(\d+)$/, " $1").replaceAll("-", " ").toLowerCase();
                       return (
                         <button
-                          className={`replay-run-item ${run.id === selectedReplayId ? "is-selected" : ""}`}
+                          className={`replay-run-item is-status-${run.status.replaceAll("_", "-")} ${run.id === selectedReplayId ? "is-selected" : ""}`}
                           type="button"
                           key={run.id}
                           onClick={() => {
@@ -1983,12 +2129,14 @@ export function ReplayHome() {
                             setMobilePanel("maze");
                             void loadReplay(run.id);
                           }}
-                          disabled={isReplayLoading}
+                          disabled={isReplayLoading || isReplaySuiteMenuOpen}
                           aria-current={run.id === selectedReplayId ? "true" : undefined}
                         >
                           <span className="replay-run-copy">
                             <strong>{mazeLabel}</strong>
-                            <small>{run.status.replaceAll("_", " ")}</small>
+                            <small className={`replay-run-status is-${run.status.replaceAll("_", "-")}`}>
+                              {run.status.replaceAll("_", " ")}
+                            </small>
                           </span>
                           <span className="replay-run-turns"><strong>{run.max_turn ?? 0}</strong><small>turns</small></span>
                         </button>
