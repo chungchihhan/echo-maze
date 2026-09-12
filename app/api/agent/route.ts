@@ -164,7 +164,15 @@ function isDirection(value: unknown): value is Direction {
 }
 
 export async function POST(request: Request) {
-  const apiKey = (env as unknown as { OPENAI_API_KEY?: string }).OPENAI_API_KEY;
+  const bindings = env as unknown as {
+    ENABLE_LIVE_API?: string;
+    OPENAI_API_KEY?: string;
+  };
+  if (bindings.ENABLE_LIVE_API !== "true") {
+    return json({ error: "Not found." }, 404);
+  }
+
+  const apiKey = bindings.OPENAI_API_KEY;
   if (!apiKey) return json({ error: "OPENAI_API_KEY is not configured on the server." }, 503);
 
   let payload: AgentRequest;

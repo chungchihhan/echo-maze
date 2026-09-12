@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "echo-maze",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-09-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENABLE_LIVE_API": "false"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
