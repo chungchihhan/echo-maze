@@ -1907,7 +1907,7 @@ h1 em {
   --replay-library-row-height: 62px;
   --replay-library-column-header-height: 36px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 45%) minmax(0, 55%);
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
@@ -1976,7 +1976,7 @@ h1 em {
   right: 8px;
   left: 8px;
   display: grid;
-  min-width: 172px;
+  min-width: 0;
   padding: 5px;
   color: var(--cobalt);
   background: var(--ice);
@@ -2025,8 +2025,10 @@ h1 em {
 }
 .replay-model-list button:hover,
 .replay-model-list button.is-selected { color: var(--ice); background: var(--cobalt); }
-.replay-model-list strong { overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
-.replay-model-list small { font-size: 9px; text-transform: uppercase; }
+.replay-model-list strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.replay-model-list small { display: flex; min-width: 0; align-items: center; gap: 4px; font-size: 8px; text-transform: uppercase; white-space: nowrap; }
+.replay-model-list small span { overflow: hidden; text-overflow: ellipsis; }
+.replay-model-list small i { flex: 0 0 auto; font-style: normal; opacity: .55; }
 .replay-batch-group { padding-bottom: 8px; }
 
 .replay-run-item {

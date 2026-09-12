@@ -335,6 +335,28 @@ function replayConfigurationKey(run: ReplayRunSummary) {
   return `${run.model}::${run.reasoning_effort ?? "unspecified"}`;
 }
 
+function replayModelIdentity(model: string) {
+  const separator = model.indexOf("/");
+  const provider = separator > 0 ? model.slice(0, separator) : "direct";
+  const modelName = separator > 0 ? model.slice(separator + 1) : model;
+  const providerLabel = (provider === "direct" && modelName.startsWith("gpt-")) ? "OpenAI" : ({
+    openai: "OpenAI",
+    deepseek: "DeepSeek",
+    "x-ai": "xAI",
+  }[provider] ?? provider.replaceAll("-", " "));
+  const displayName = modelName
+    .split("-")
+    .map((part) => {
+      if (part.toLowerCase() === "gpt") return "GPT";
+      if (part.toLowerCase() === "deepseek") return "DeepSeek";
+      if (part.toLowerCase() === "grok") return "Grok";
+      if (/^v\d/i.test(part)) return `V${part.slice(1)}`;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+  return { displayName, providerLabel };
+}
+
 function replaySuiteSeed(run: ReplayRunSummary) {
   if (run.suite_seed) return run.suite_seed;
   const batchSeparator = run.batch_id?.indexOf("--") ?? -1;
@@ -2067,18 +2089,22 @@ export function ReplayHome() {
           <div className="replay-run-list">
             <nav className="replay-model-list" aria-label="Models">
               <span className="replay-library-column-label">MODELS</span>
-              {replayGroups.map((modelGroup) => (
+              {replayGroups.map((modelGroup) => {
+                const identity = replayModelIdentity(modelGroup.model);
+                return (
                   <button
                     className={modelGroup.key === selectedModelGroup?.key ? "is-selected" : ""}
                     type="button"
                     key={modelGroup.key}
                     onClick={() => setSelectedReplayConfiguration(modelGroup.key)}
                     aria-pressed={modelGroup.key === selectedModelGroup?.key}
+                    title={`${modelGroup.model} · reasoning ${modelGroup.reasoningEffort ?? "not specified"}`}
                   >
-                    <strong>{modelGroup.model}</strong>
-                    <small>Reasoning · {modelGroup.reasoningEffort?.toUpperCase() ?? "NOT SPECIFIED"}</small>
+                    <strong>{identity.displayName}</strong>
+                    <small><span>{identity.providerLabel}</span><i>·</i><span>{modelGroup.reasoningEffort ? `${modelGroup.reasoningEffort.toUpperCase()} EFFORT` : "EFFORT N/A"}</span></small>
                   </button>
-                ))}
+                );
+              })}
             </nav>
             <div className={`replay-model-runs ${isReplaySuiteMenuOpen ? "is-suite-menu-open" : ""}`}>
               <div className="replay-library-column-label replay-suite-column-label">
