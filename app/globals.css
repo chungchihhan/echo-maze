@@ -2589,8 +2589,7 @@ h1 em {
   grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
   align-items: end;
   gap: clamp(40px, 8vw, 120px);
-  min-height: 430px;
-  padding: clamp(64px, 9vw, 128px) 0 clamp(56px, 8vw, 104px);
+  padding: clamp(64px, 7vw, 88px) 0;
 }
 
 .benchmark-hero .eyebrow,
@@ -2783,7 +2782,7 @@ h1 em {
   .benchmark-page { width: min(100% - 28px, 1280px); }
   .benchmark-page .site-nav { justify-content: space-between; overflow-x: auto; }
   .benchmark-page .site-nav a { padding-right: 7px; padding-left: 7px; }
-  .benchmark-hero { grid-template-columns: 1fr; gap: 42px; min-height: 0; padding: 72px 0 64px; }
+  .benchmark-hero { grid-template-columns: 1fr; gap: 42px; min-height: 0; padding: 64px 0; }
   .benchmark-hero h1 { font-size: clamp(60px, 20vw, 92px); }
   .benchmark-suite { grid-template-columns: 1fr; }
   .benchmark-suite-name { border-right: 0; border-bottom: 1px solid var(--mist); }
