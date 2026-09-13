@@ -141,6 +141,14 @@ test("server-renders the published benchmark leaderboard", async () => {
   assert.match(text, /gpt-5\.6-luna/i);
   assert.match(text, /deepseek-v4\.1-flash/i);
   assert.match(text, /Run evidence/i);
+  assert.match(text, /More metrics/i);
+  assert.match(text, /Median turns/i);
+  assert.match(text, /Wall hits \/ 100/i);
+  assert.match(text, /API failures/i);
+  assert.match(text, /Success weighted by path efficiency/i);
+  assert.match(html, /<details class="benchmark-column-toggle">/i);
+  assert.match(html, /<button[^>]+aria-label="About average SPL"[^>]*>\?<\/button>/i);
+  assert.doesNotMatch(html, /<details class="benchmark-metric-help">/i);
   assert.match(text, /Open Replay workspace/i);
   assert.match(html, /href="\/replay\?run=emz-public-v0/i);
   assert.match(html, />Replays<\/a>/i);
