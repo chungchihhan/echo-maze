@@ -54,6 +54,8 @@ test("server-renders a landing page with the featured Walker replay", async () =
   assert.match(text, /Memory in Motion/);
   assert.match(text, /The exit is only half the story/);
   assert.match(text, /Partial observability/);
+  assert.match(text, /Explore benchmark results/);
+  assert.match(html, /href="\/benchmark"/);
   assert.match(html, /class="landing-footer"/);
   assert.match(html, /aria-label="Footer navigation"/);
   assert.match(text, /Where AI memory finds its way/);
@@ -85,6 +87,9 @@ test("server-renders the complete replay workspace", async () => {
   const html = await response.text();
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(text, /REPLAY LIBRARY/);
+  assert.match(html, /aria-label="Echo Maze home"/i);
+  assert.match(html, />Benchmark<\/a>/i);
+  assert.match(html, /href="\/replay" class="is-active">Replays<\/a>/i);
   assert.match(text, /recorded runs/);
   assert.doesNotMatch(text, /NOW PLAYING/);
   assert.match(text, /gpt-5\.6-luna/);
@@ -122,6 +127,35 @@ test("server-renders the published Replay Library destination", async () => {
   assert.match(html, /<title>Replay Library — Echo Maze<\/title>/i);
   assert.match(text, /Every run leaves a trail of decisions\./i);
   assert.match(text, /Choose a recorded run/i);
+});
+
+test("server-renders the published benchmark leaderboard", async () => {
+  const response = await render("/benchmark");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(html, /<title>Benchmark Results — Echo Maze<\/title>/i);
+  assert.match(text, /Memory, measured\./i);
+  assert.doesNotMatch(text, /observable AI navigation benchmark/i);
+  assert.doesNotMatch(html, />Observe<\/a>/i);
+  assert.match(text, /Same maze\. Different memory\./i);
+  assert.match(text, /emz-public-v0/i);
+  assert.match(text, /grok-4\.6/i);
+  assert.match(text, /gpt-5\.6-luna/i);
+  assert.match(text, /deepseek-v4\.1-flash/i);
+  assert.match(text, /Run evidence/i);
+  assert.match(text, /More metrics/i);
+  assert.match(text, /Median turns/i);
+  assert.match(text, /Wall hits \/ 100/i);
+  assert.match(text, /API failures/i);
+  assert.match(text, /Success weighted by path efficiency/i);
+  assert.match(html, /<details class="benchmark-column-toggle">/i);
+  assert.match(html, /<button[^>]+aria-label="About average SPL"[^>]*>\?<\/button>/i);
+  assert.doesNotMatch(html, /<details class="benchmark-metric-help">/i);
+  assert.match(text, /Open Replay workspace/i);
+  assert.match(html, /href="\/replay\?run=emz-public-v0/i);
+  assert.match(html, />Replays<\/a>/i);
+  assert.doesNotMatch(html, /href="\/replays">Replays<\/a>/i);
 });
 
 test("published benchmark index is valid and its runs are replayable", async () => {
