@@ -22,6 +22,7 @@ import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } fro
 import { HeroMaze } from "./hero-maze";
 import { MazeSightLayer } from "./maze-sight";
 import { MazeStructure } from "./maze-structure";
+import { SiteHeader } from "./site-header";
 import { GridWalkerMarker } from "./walker-marker";
 
 // Environment semantics (maze generation, movement, corridor line-of-sight)
@@ -457,7 +458,7 @@ function nearestNavigationDock(position: NavigationPosition, viewportWidth: numb
 
 function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isBrandVisible, setIsBrandVisible] = useState(currentPath === "/");
+  const [isBrandVisible, setIsBrandVisible] = useState(currentPath === "/" || currentPath === "/replay");
   const [dock, setDock] = useState<NavigationDock | null>(null);
   const [position, setPosition] = useState<NavigationPosition | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -495,7 +496,7 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   useEffect(() => {
     if (currentPath !== "/") return undefined;
 
-    const brand = document.querySelector(".hero-brand-lockup");
+    const brand = document.querySelector(".hero-brand-lockup, .public-topbar .brand-lockup");
     if (!brand || typeof IntersectionObserver === "undefined") return undefined;
 
     const observer = new IntersectionObserver(([entry]) => setIsBrandVisible(Boolean(entry?.isIntersecting)), { threshold: 0.01 });
@@ -650,6 +651,9 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
           </a>
           <a className={`app-nav-link ${currentPath === "/replay" ? "is-current" : ""}`} href="/replay" aria-current={currentPath === "/replay" ? "page" : undefined} tabIndex={linkTabIndex} onClick={() => closeNavigation()}>
             <span>Replay workspace</span><span aria-hidden="true">↗</span>
+          </a>
+          <a className={`app-nav-link ${currentPath === "/benchmark" ? "is-current" : ""}`} href="/benchmark" aria-current={currentPath === "/benchmark" ? "page" : undefined} tabIndex={linkTabIndex} onClick={() => closeNavigation()}>
+            <span>Benchmark results</span><span aria-hidden="true">↗</span>
           </a>
           <a className="app-nav-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer" tabIndex={linkTabIndex} onClick={() => closeNavigation()}>
             <span>GitHub repository</span><span aria-hidden="true">↗</span>
@@ -1326,7 +1330,7 @@ function BenchmarkIntro() {
           <h2 id="benchmark-heading"><span>The exit is only</span><em>half the story.</em></h2>
           <div className="benchmark-summary">
             <p>One Walker. One conversation. No map or route tool—only observations, memory, and a replay of every move.</p>
-            <a className="benchmark-link" href="/replay">Watch a complete run <span aria-hidden="true">↗</span></a>
+            <a className="benchmark-link" href="/benchmark">Explore benchmark results <span aria-hidden="true">↗</span></a>
           </div>
         </div>
         <ol className="benchmark-rules" aria-label="Benchmark principles">
@@ -1357,6 +1361,7 @@ function LandingFooter() {
       <strong>ECHO MAZE</strong>
       <span>Where AI memory finds its way.</span>
       <nav aria-label="Footer navigation">
+        <a href="/benchmark">Benchmark</a>
         <a href="/replay">Replay</a>
         <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
       </nav>
@@ -1786,9 +1791,11 @@ export function ReplayHome() {
       setReplayLibraryError(null);
       if (!initialReplayLoadedRef.current) {
         initialReplayLoadedRef.current = true;
-        setSelectedReplaySuite(replaySuiteSeed(publishedRuns[0]));
-        setSelectedReplayConfiguration(replayConfigurationKey(publishedRuns[0]));
-        await loadReplay(publishedRuns[0].id);
+        const requestedRunId = new URLSearchParams(window.location.search).get("run");
+        const initialRun = publishedRuns.find((run) => run.id === requestedRunId) ?? publishedRuns[0];
+        setSelectedReplaySuite(replaySuiteSeed(initialRun));
+        setSelectedReplayConfiguration(replayConfigurationKey(initialRun));
+        await loadReplay(initialRun.id);
       }
     } catch (error) {
       setReplayLibraryError(error instanceof Error ? error.message : "Could not load published runs.");
@@ -2075,6 +2082,7 @@ export function ReplayHome() {
 
   return (
     <main className="echo-app replay-page replay-player-page">
+      <SiteHeader active="replays" />
       <AppNavigation currentPath="/replay" />
       <section className="replay-player" aria-label="Replay player">
         <aside
