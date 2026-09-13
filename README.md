@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="./public/echo-maze-icon.png" width="72" alt="Echo Maze logo">
-</p>
-
-<h1 align="center">Echo Maze</h1>
+<h1 align="center">
+  <img src="./public/echo-maze-icon.png" width="48" alt="Echo Maze logo" align="absmiddle">
+  Echo Maze
+</h1>
 
 <p align="center"><strong>Where AI memory finds its way.</strong></p>
 
