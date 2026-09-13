@@ -22,6 +22,7 @@ import { DEMO_REPLAY_DETAIL, DEMO_REPLAY_PROVENANCE, type DemoReplayDetail } fro
 import { HeroMaze } from "./hero-maze";
 import { MazeSightLayer } from "./maze-sight";
 import { MazeStructure } from "./maze-structure";
+import { SiteHeader } from "./site-header";
 import { GridWalkerMarker } from "./walker-marker";
 
 // Environment semantics (maze generation, movement, corridor line-of-sight)
@@ -457,7 +458,7 @@ function nearestNavigationDock(position: NavigationPosition, viewportWidth: numb
 
 function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isBrandVisible, setIsBrandVisible] = useState(currentPath === "/");
+  const [isBrandVisible, setIsBrandVisible] = useState(currentPath === "/" || currentPath === "/replay");
   const [dock, setDock] = useState<NavigationDock | null>(null);
   const [position, setPosition] = useState<NavigationPosition | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -495,7 +496,7 @@ function AppNavigation({ currentPath }: { currentPath: "/" | "/replay" }) {
   useEffect(() => {
     if (currentPath !== "/") return undefined;
 
-    const brand = document.querySelector(".hero-brand-lockup");
+    const brand = document.querySelector(".hero-brand-lockup, .public-topbar .brand-lockup");
     if (!brand || typeof IntersectionObserver === "undefined") return undefined;
 
     const observer = new IntersectionObserver(([entry]) => setIsBrandVisible(Boolean(entry?.isIntersecting)), { threshold: 0.01 });
@@ -2081,6 +2082,7 @@ export function ReplayHome() {
 
   return (
     <main className="echo-app replay-page replay-player-page">
+      <SiteHeader active="replays" />
       <AppNavigation currentPath="/replay" />
       <section className="replay-player" aria-label="Replay player">
         <aside
