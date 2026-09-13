@@ -87,6 +87,9 @@ test("server-renders the complete replay workspace", async () => {
   const html = await response.text();
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(text, /REPLAY LIBRARY/);
+  assert.match(html, /aria-label="Echo Maze home"/i);
+  assert.match(html, />Benchmark<\/a>/i);
+  assert.match(html, /href="\/replay" class="is-active">Replays<\/a>/i);
   assert.match(text, /recorded runs/);
   assert.doesNotMatch(text, /NOW PLAYING/);
   assert.match(text, /gpt-5\.6-luna/);
