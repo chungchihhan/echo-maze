@@ -14,6 +14,8 @@ type PublishedRun = {
   model: string;
   maze_seed: string;
   max_turn: number | null;
+  successful_moves?: number;
+  wall_hits?: number;
   spl?: number;
   batch_id?: string;
   reasoning_effort?: string | null;
@@ -26,12 +28,17 @@ type ModelResult = {
   model: string;
   effort: string;
   runs: PublishedRun[];
+  scoredRuns: number;
   solved: number;
   averageSpl: number;
-  reliableRuns: number;
+  medianSolvedTurns: number | null;
+  wallHitsPer100: number;
+  formatCompletion: number;
+  apiFailures: number;
 };
 
 const TIERS: Tier[] = ["easy", "medium", "hard"];
+const UNSCORED_STATUSES = new Set(["infra_interrupted", "infrastructure_interrupted"]);
 
 function suiteName(run: PublishedRun) {
   return run.batch_id?.split("--")[0] ?? "published-suite";
@@ -54,6 +61,22 @@ function statusLabel(status: string) {
   return status.replaceAll("_", " ");
 }
 
+function median(values: number[]) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function MetricHelp({ label, children }: { label: string; children: string }) {
+  return (
+    <span className="benchmark-metric-help">
+      <button type="button" aria-label={`About ${label}`}>?</button>
+      <span role="tooltip">{children}</span>
+    </span>
+  );
+}
+
 function groupResults(runs: PublishedRun[]) {
   const groups = new Map<string, PublishedRun[]>();
   for (const run of runs) {
@@ -64,9 +87,11 @@ function groupResults(runs: PublishedRun[]) {
 
   return [...groups.entries()]
     .map(([key, modelRuns]): ModelResult => {
-      const solved = modelRuns.filter((run) => run.status === "solved").length;
-      const averageSpl = modelRuns.reduce((total, run) => total + (run.spl ?? 0), 0) / modelRuns.length;
-      const reliableRuns = modelRuns.filter((run) => !["invalid_output", "api_failure"].includes(run.status)).length;
+      const scoredRuns = modelRuns.filter((run) => !UNSCORED_STATUSES.has(run.status));
+      const solvedRuns = scoredRuns.filter((run) => run.status === "solved");
+      const formatRuns = scoredRuns.filter((run) => run.status !== "api_failure");
+      const moveAttempts = modelRuns.reduce((total, run) => total + (run.successful_moves ?? 0) + (run.wall_hits ?? 0), 0);
+      const wallHits = modelRuns.reduce((total, run) => total + (run.wall_hits ?? 0), 0);
       return {
         key,
         model: modelRuns[0].model,
@@ -75,12 +100,24 @@ function groupResults(runs: PublishedRun[]) {
           const tierDifference = TIERS.indexOf(tierFor(a)) - TIERS.indexOf(tierFor(b));
           return tierDifference || a.maze_seed.localeCompare(b.maze_seed);
         }),
-        solved,
-        averageSpl,
-        reliableRuns,
+        scoredRuns: scoredRuns.length,
+        solved: solvedRuns.length,
+        averageSpl: scoredRuns.length > 0
+          ? scoredRuns.reduce((total, run) => total + (run.spl ?? 0), 0) / scoredRuns.length
+          : 0,
+        medianSolvedTurns: median(solvedRuns.flatMap((run) => typeof run.max_turn === "number" ? [run.max_turn] : [])),
+        wallHitsPer100: moveAttempts > 0 ? wallHits / moveAttempts * 100 : 0,
+        formatCompletion: formatRuns.length > 0
+          ? formatRuns.filter((run) => run.status !== "invalid_output").length / formatRuns.length * 100
+          : 0,
+        apiFailures: modelRuns.filter((run) => run.status === "api_failure").length,
       };
     })
-    .sort((a, b) => b.solved - a.solved || b.averageSpl - a.averageSpl || b.reliableRuns - a.reliableRuns);
+    .sort((a, b) => {
+      const aSolveRate = a.scoredRuns > 0 ? a.solved / a.scoredRuns : 0;
+      const bSolveRate = b.scoredRuns > 0 ? b.solved / b.scoredRuns : 0;
+      return bSolveRate - aSolveRate || b.averageSpl - a.averageSpl || b.formatCompletion - a.formatCompletion;
+    });
 }
 
 export default function BenchmarkPage() {
@@ -129,8 +166,15 @@ export default function BenchmarkPage() {
         </div>
 
         <div className="benchmark-scoreboard">
+          <details className="benchmark-column-toggle">
+            <summary>
+              <span className="benchmark-toggle-more">More metrics</span>
+              <span className="benchmark-toggle-less">Fewer metrics</span>
+              <i aria-hidden="true" />
+            </summary>
+          </details>
           {results.map((result, index) => {
-            const solveRate = Math.round(result.solved / result.runs.length * 100);
+            const solveRate = result.scoredRuns > 0 ? Math.round(result.solved / result.scoredRuns * 100) : 0;
             return (
               <article className="benchmark-model-row" key={result.key}>
                 <div className="benchmark-rank" aria-label={`Rank ${index + 1}`}>
@@ -143,11 +187,11 @@ export default function BenchmarkPage() {
                 </header>
                 <div className="benchmark-primary-score">
                   <strong>{solveRate}<sup>%</sup></strong>
-                  <span>{result.solved} of {result.runs.length} solved</span>
+                  <span>{result.solved} of {result.scoredRuns} scored</span>
                 </div>
                 <div className="benchmark-tier-scores">
                   {TIERS.map((tier) => {
-                    const tierRuns = result.runs.filter((run) => tierFor(run) === tier);
+                    const tierRuns = result.runs.filter((run) => tierFor(run) === tier && !UNSCORED_STATUSES.has(run.status));
                     const tierSolved = tierRuns.filter((run) => run.status === "solved").length;
                     return (
                       <div key={tier}>
@@ -158,8 +202,41 @@ export default function BenchmarkPage() {
                   })}
                 </div>
                 <div className="benchmark-secondary-scores">
-                  <div><span>AVG SPL</span><strong>{result.averageSpl.toFixed(3)}</strong></div>
-                  <div><span>VALID RUNS</span><strong>{result.reliableRuns}/{result.runs.length}</strong></div>
+                  <div>
+                    <div className="benchmark-metric-label">
+                      <span>AVG SPL</span>
+                      <MetricHelp label="average SPL">Success weighted by path efficiency. A score of 1.0 means every scored maze was solved using an optimal path.</MetricHelp>
+                    </div>
+                    <strong>{result.averageSpl.toFixed(3)}</strong>
+                  </div>
+                  <div className="benchmark-extra-metric">
+                    <div className="benchmark-metric-label">
+                      <span>MEDIAN TURNS</span>
+                      <MetricHelp label="median turns">The median number of turns used by solved runs. Lower is faster, but maze routes vary in length.</MetricHelp>
+                    </div>
+                    <strong>{result.medianSolvedTurns ?? "—"}</strong>
+                  </div>
+                  <div className="benchmark-extra-metric">
+                    <div className="benchmark-metric-label">
+                      <span>WALL HITS / 100</span>
+                      <MetricHelp label="wall hits per 100">Blocked moves per 100 recorded move attempts across all runs.</MetricHelp>
+                    </div>
+                    <strong>{result.wallHitsPer100.toFixed(1)}</strong>
+                  </div>
+                  <div className="benchmark-extra-metric">
+                    <div className="benchmark-metric-label">
+                      <span>FORMAT</span>
+                      <MetricHelp label="format completion">Share of non-API-failure runs that completed without an invalid structured response.</MetricHelp>
+                    </div>
+                    <strong>{Math.round(result.formatCompletion)}%</strong>
+                  </div>
+                  <div className="benchmark-extra-metric">
+                    <div className="benchmark-metric-label">
+                      <span>API FAILURES</span>
+                      <MetricHelp label="API failures">Runs terminated by an unresolved provider or transport failure.</MetricHelp>
+                    </div>
+                    <strong>{result.apiFailures}</strong>
+                  </div>
                 </div>
                 <div className="benchmark-run-evidence">
                   <span>RUN EVIDENCE</span>
