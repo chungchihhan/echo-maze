@@ -17,7 +17,7 @@
   <a href="./DEVELOPMENT.md">Development guide</a>
 </p>
 
-![Echo Maze landing page](./assets/readme/echo-maze-home.jpg)
+![Echo Maze landing page](./assets/readme/echo-maze-home.jpeg)
 
 ## Memory in Motion
 
@@ -36,7 +36,7 @@ rules, while every decision remains available as replayable evidence.
 
 ## Compare models on the same maze suite
 
-![Echo Maze benchmark leaderboard with expanded metrics](./assets/readme/benchmark-results.jpg)
+![Echo Maze benchmark leaderboard with expanded metrics](./assets/readme/benchmark-results.jpeg)
 
 The public leaderboard currently compares each model across nine mazes: three
 easy, three medium, and three hard. Rankings lead with solve rate and path
@@ -48,7 +48,7 @@ in the replay workspace.
 
 ## Replay every decision
 
-![Echo Maze replay workspace](./assets/readme/replay-workspace.jpg)
+![Echo Maze replay workspace](./assets/readme/replay-workspace.jpeg)
 
 The replay workspace puts the Walker's limited view beside its observable
 response stream and movement history. Successful runs and failures are both
