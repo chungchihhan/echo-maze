@@ -2081,7 +2081,10 @@ export function ReplayHome() {
     <main className="echo-app replay-page replay-player-page">
       <SiteHeader active="replays" />
       <AppNavigation currentPath="/replay" />
-      <section className="replay-player" aria-label="Replay player">
+      <section
+        className={`replay-player${mobilePanel === "library" ? " is-library-view" : ""}`}
+        aria-label="Replay player"
+      >
         <aside
           className={`replay-player-library ${mobilePanel === "library" ? "is-mobile-active" : ""}`}
           id="replay-library-panel"
