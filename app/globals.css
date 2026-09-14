@@ -2460,12 +2460,31 @@ h1 em {
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
   }
+
+  .replay-player.is-library-view .replay-now-playing,
+  .replay-player.is-library-view .replay-player-controls {
+    display: none;
+  }
   .replay-player-library { height: auto; min-height: 0; }
-  .replay-player-main { min-height: 0; overflow: hidden; }
+  .replay-player-main { min-height: 0; overflow: hidden; container-type: size; }
   .replay-player-main-inner { height: 100%; overflow: hidden; }
+  .replay-player-maze {
+    width: min(100cqw, 100cqh);
+    max-width: 100%;
+    height: min(100cqw, 100cqh);
+    max-height: 100%;
+    align-self: center;
+    justify-self: center;
+  }
   .replay-player-output { height: 100%; }
   .replay-player-controls { position: static; }
   .replay-player-library-head { min-height: 82px; padding: 16px 14px 12px; }
+  .replay-library-refresh {
+    margin: 8px 14px 10px;
+    padding: 7px 10px;
+    font-size: 11px;
+    line-height: 1.2;
+  }
   .replay-now-playing { padding-inline: 14px; }
   .replay-now-playing-meta strong,
   .replay-now-playing-meta span { white-space: normal; }
