@@ -10,7 +10,7 @@ This module owns the public Solo Walker replay presentation: the automatic homep
 
 ## Start here
 
-- `app/page.tsx` — public landing route; mounts the featured Walker replay from `app/echo-maze.tsx`
+- `app/page.tsx` — public landing route; mounts the featured Walker replay from `app/echo-maze.tsx`. Pass `?lab=1` to mount the retained Live Lab (`LiveLab`, TypeSafe Jev; requires `ENABLE_LIVE_API=true`)
 - `app/replay/page.tsx` — full replay workspace route with the library, Agent Output, and Walker View
 - `app/echo-maze.tsx` — shared client presentation, maze rendering, replay playback, and retained live-loop implementation
 - `app/replay-ui.tsx` — published replay reconstruction, homepage rotation, library cards, detailed controls, and maze presentation
@@ -22,9 +22,10 @@ This module owns the public Solo Walker replay presentation: the automatic homep
 
 ## Architecture and boundaries
 
-- `app/page.tsx` is a read-only landing route: it presents the sanitized featured replay and must not initialize a live run or call `/api/agent`.
+- `app/page.tsx` is a read-only landing route by default: it presents the sanitized featured replay and must not initialize a live run or call `/api/agent`.
+- `app/page.tsx?lab=1` is the opt-in Live Lab entry: it may mount `LiveLab` and call `/api/agent` when live APIs are enabled. Do not link this from the public product shell.
 - `app/replay/page.tsx` is the full read-only replay workspace. It may read and export saved runs through `/api/replays` but must not initialize a live run or call `/api/agent`.
-- The retained live-loop implementation and `/api/agent` boundary are not mounted by a public route.
+- The retained live-loop implementation is not mounted by default public navigation.
 - `replay-ui.tsx` reconstructs published replay frames from the append-only event stream. It must not re-implement maze semantics locally or call `/api/agent`.
 - The spectator can reveal the full maze in the UI, but spectator-only map state must not enter the Solo Walker request payload.
 - Keep browser code independent of Cloudflare bindings, API keys, D1 clients, and server-only imports. Cross the boundary through the existing HTTP routes.

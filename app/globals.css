@@ -1680,6 +1680,17 @@ h1 em {
 .thought-decision { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid var(--mist); }
 .thought-decision strong { font-size: var(--text-body); }
 .thought-decision em { font-size: var(--text-body-sm); font-style: normal; text-decoration: underline; text-underline-offset: 4px; }
+.decision-distribution { display: grid; gap: 10px; }
+.decision-meta { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; font-size: var(--text-body-sm); }
+.decision-meta strong { font-size: var(--text-body); font-weight: 500; }
+.decision-meta em { font-style: normal; opacity: 0.72; }
+.decision-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.decision-bars li { display: grid; grid-template-columns: 64px 1fr 48px; gap: 10px; align-items: center; font-size: var(--text-body-sm); }
+.decision-bars li.is-chosen strong { text-decoration: underline; text-underline-offset: 3px; }
+.decision-bars li.is-blocked-option { opacity: 0.45; }
+.decision-bar-track { height: 6px; background: color-mix(in srgb, var(--mist) 70%, transparent); overflow: hidden; }
+.decision-bar-track.is-blocked { background: color-mix(in srgb, var(--mist) 40%, transparent); }
+.decision-bar-track i { display: block; height: 100%; background: var(--cobalt); }
 
 .thinking-row { display: flex; align-items: center; gap: 8px; padding: 24px; border-top: 1px solid var(--mist); }
 .thinking-row span { width: 8px; height: 8px; background: var(--cobalt); border-radius: 50%; animation: thought-pulse 1s infinite ease-in-out; }

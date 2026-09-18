@@ -39,6 +39,12 @@ type ObservationDTO = {
   lastAction: DirectionKey | null;
   lastResult: MoveResult | null;
 };
+type DecisionDistribution = {
+  probabilities: Partial<Record<DirectionKey, number>>;
+  confidence: number;
+  source?: string;
+  latencyMs?: number | null;
+};
 type WalkerTurn = {
   turn: number;
   observation: ObservationDTO;
@@ -48,6 +54,7 @@ type WalkerTurn = {
   coordinateNote: string;
   direction: DirectionKey;
   result: MoveResult | null;
+  decision?: DecisionDistribution | null;
 };
 type GameState = {
   maze: Maze;
@@ -78,12 +85,17 @@ type AgentCallMeta = {
 };
 type SoloWalkerResponse = {
   role: "solo_walker";
-  model: "gpt-5.6-luna";
+  provider?: "openai" | "typesafe";
+  model: string;
   observationSummary: string;
   reasoning: string;
+  notes?: string;
   believedPosition: RelativePoint;
+  estimatedPosition?: RelativePoint;
   coordinateNote: string;
   direction: DirectionKey;
+  action?: DirectionKey;
+  decision?: DecisionDistribution | null;
   meta: AgentCallMeta;
 };
 type ReplayStatus = "starting" | "recording" | "error";
@@ -750,7 +762,7 @@ function Masthead({ mode, onNewMaze }: { mode: PageMode; onNewMaze?: () => void 
       </div>
       {isLab ? (
         <div className="top-actions">
-          <div className="mode-pill is-live"><span className="pulse-dot" />LIVE LAB · SOLO WALKER</div>
+          <div className="mode-pill is-live"><span className="pulse-dot" />LIVE LAB · TYPESAFE JEV</div>
           {onNewMaze ? <button className="button button-quiet" onClick={onNewMaze}>New maze <span>↗</span></button> : null}
         </div>
       ) : null}
@@ -770,9 +782,9 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
             <div><div className="brand-name">ECHO MAZE</div></div>
           </div>
         ) : null}
-        {isLab ? <p className="eyebrow">CONVERSATION-ONLY MEMORY</p> : null}
+        {isLab ? <p className="eyebrow">SYSTEM ONE · CHOICE PROBABILITIES</p> : null}
         {isLab ? (
-          <h1>Can one agent remember <em>the maze it cannot see?</em></h1>
+          <h1>Watch Jev pick each move <em>with calibrated confidence.</em></h1>
         ) : (
           <h1 className={`hero-typewriter-title${heroCopy.headlineIsFadingOut ? " is-fading-out" : ""}`}>
             {heroCopy.headline}
@@ -1050,6 +1062,64 @@ function ReplaySuitePicker({
   );
 }
 
+function DecisionReadout({
+  decision,
+  chosen,
+  openDirections,
+}: {
+  decision: DecisionDistribution;
+  chosen: DirectionKey;
+  openDirections: DirectionKey[];
+}) {
+  const open = new Set(openDirections);
+  const rows = DIRECTIONS.map((item) => {
+    const isOpen = open.has(item.key);
+    return {
+      key: item.key,
+      label: item.label,
+      isOpen,
+      probability: isOpen ? (decision.probabilities[item.key] ?? 0) : null,
+    };
+  });
+
+  return (
+    <div className="thought-section decision-distribution">
+      <span>JEV CHOICE</span>
+      <div className="decision-meta">
+        <strong>{(decision.confidence * 100).toFixed(0)}% confidence</strong>
+        {typeof decision.latencyMs === "number" ? <em>{decision.latencyMs} ms</em> : null}
+        {decision.source ? <em>{decision.source}</em> : null}
+      </div>
+      <ul className="decision-bars">
+        {rows.map((row) => (
+          <li
+            key={row.key}
+            className={[
+              row.key === chosen ? "is-chosen" : "",
+              row.isOpen ? "" : "is-blocked-option",
+            ].filter(Boolean).join(" ") || undefined}
+          >
+            <span>{row.label}</span>
+            {row.isOpen ? (
+              <>
+                <div className="decision-bar-track" aria-hidden="true">
+                  <i style={{ width: `${Math.max(2, Math.round((row.probability ?? 0) * 100))}%` }} />
+                </div>
+                <strong>{((row.probability ?? 0) * 100).toFixed(0)}%</strong>
+              </>
+            ) : (
+              <>
+                <div className="decision-bar-track is-blocked" aria-hidden="true" />
+                <strong>wall</strong>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThinking: boolean }) {
   const streamRef = useRef<HTMLDivElement>(null);
 
@@ -1074,13 +1144,20 @@ function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThink
             <p>{entry.observationSummary}</p>
           </div>
           <div className="thought-section reasoning-section">
-            <span>REASONING SUMMARY</span>
+            <span>{entry.decision ? "DECISION NOTES" : "REASONING SUMMARY"}</span>
             <p>{entry.reasoning}</p>
           </div>
           <div className="coordinate-note">
             <div><span>SELF-REPORTED POSITION</span><strong>({entry.believedPosition?.x ?? 0}, {entry.believedPosition?.y ?? 0})</strong></div>
             <p>{entry.coordinateNote ?? "This older entry has no coordinate note."}</p>
           </div>
+          {entry.decision ? (
+            <DecisionReadout
+              decision={entry.decision}
+              chosen={entry.direction}
+              openDirections={entry.observation.openDirections}
+            />
+          ) : null}
           <div className="thought-decision">
             <span>DECISION</span>
             <strong>Move {DIRECTIONS.find((item) => item.key === entry.direction)?.label}</strong>
@@ -1091,7 +1168,7 @@ function ThoughtStream({ history, isThinking }: { history: WalkerTurn[]; isThink
         </article>
       ))}
       {isThinking ? (
-        <div className="thinking-row"><span /><span /><span /><p>Walker is reviewing the full conversation…</p></div>
+        <div className="thinking-row"><span /><span /><span /><p>Jev is scoring open directions…</p></div>
       ) : null}
     </div>
   );
@@ -1110,10 +1187,10 @@ function ThoughtCard({
         <div className="agent-name-wrap">
           <PanelLabel>AGENT OUTPUT</PanelLabel>
           <div className="thought-title-row">
-            <h2>Walker&apos;s reasoning log</h2>
+            <h2>Walker&apos;s decision log</h2>
             <span className="thought-info">
-              <button className="thought-info-button" type="button" aria-label="About Walker&apos;s reasoning log" aria-describedby="walker-reasoning-description">i</button>
-              <span className="thought-tooltip" id="walker-reasoning-description" role="tooltip">A concise explanation Walker provides each turn—not the model&apos;s hidden chain of thought.</span>
+              <button className="thought-info-button" type="button" aria-label="About Walker&apos;s decision log" aria-describedby="walker-reasoning-description">i</button>
+              <span className="thought-tooltip" id="walker-reasoning-description" role="tooltip">Jev returns a Choice with probabilities and confidence—not free-form chain of thought.</span>
             </span>
           </div>
         </div>
@@ -1529,7 +1606,7 @@ export function LiveLab() {
     setReplayRunId(runId);
     setReplayStatus("starting");
     queueReplay({
-      action: "create", runId, createdAt: Date.now(), model: "gpt-5.6-luna",
+      action: "create", runId, createdAt: Date.now(), model: "jev-latest",
       mazeSeed: initialGame.maze.seed, maze: initialGame.maze, initialPosition: initialGame.position,
     });
     return runId;
@@ -1589,8 +1666,10 @@ export function LiveLab() {
     setAgentError(null);
     try {
       const requestPayload = {
-        role: "solo_walker",
+        role: "solo_walker" as const,
+        provider: "typesafe" as const,
         turn: activeTurn,
+        relativePosition: snapshot.relativePosition,
         observation: observeWalkerCell(
           snapshot.maze.cells,
           snapshot.maze.exit,
@@ -1598,23 +1677,47 @@ export function LiveLab() {
           snapshot.lastAction,
           snapshot.lastResult,
         ),
-        conversation: snapshot.history,
-      } as const;
+        conversation: snapshot.history.map((entry) => ({
+          turn: entry.turn,
+          observation: entry.observation,
+          estimatedPosition: entry.believedPosition,
+          notes: entry.reasoning,
+          action: entry.direction,
+          result: entry.result,
+        })),
+      };
       recordReplay(runId, snapshot, "agent_request", requestPayload);
       const response = await requestAgent<SoloWalkerResponse>(requestPayload);
       recordReplay(runId, snapshot, "solo_walker_response", response);
+      const direction = response.direction ?? response.action;
+      if (!direction || !DIRECTIONS.some((item) => item.key === direction)) {
+        throw new Error("Walker returned an invalid direction.");
+      }
+      const believedPosition = response.believedPosition
+        ?? response.estimatedPosition
+        ?? snapshot.relativePosition;
+      const reasoning = response.reasoning
+        ?? response.notes
+        ?? "TypeSafe Choice completed without notes.";
       const entry: WalkerTurn = {
         turn: activeTurn,
         observation: requestPayload.observation,
-        observationSummary: response.observationSummary,
-        reasoning: response.reasoning,
-        believedPosition: response.believedPosition,
-        coordinateNote: response.coordinateNote,
-        direction: response.direction,
+        observationSummary: response.observationSummary ?? "Observation unavailable.",
+        reasoning,
+        believedPosition,
+        coordinateNote: response.coordinateNote
+          ?? `Relative position (${believedPosition.x}, ${believedPosition.y}).`,
+        direction,
         result: null,
+        decision: response.decision
+          ? {
+              ...response.decision,
+              latencyMs: response.meta?.latencyMs ?? null,
+            }
+          : null,
       };
       setGame((current) => current !== snapshot ? current : ({
-        ...current, phase: "walker_move", pendingDirection: response.direction,
+        ...current, phase: "walker_move", pendingDirection: direction,
         status: "running", history: [...current.history, entry],
       }));
     } catch (error) {
@@ -1693,7 +1796,7 @@ export function LiveLab() {
         />
       </div>
 
-      <footer className="footer-note"><span>Echo Maze · solo walker · gpt-5.6 luna</span><span>minimum optimal route {MIN_ROUTE_LENGTH}</span></footer>
+      <footer className="footer-note"><span>Echo Maze · live lab · TypeSafe Jev</span><span>minimum optimal route {MIN_ROUTE_LENGTH}</span></footer>
     </main>
   );
 }
