@@ -49,6 +49,7 @@ export const MODEL_ALLOWLIST = [
   "nvidia/nemotron-3-ultra-550b-a55b:free",
   "deepseek/deepseek-v4-flash-0731",
   "z-ai/glm-5.3-flash",
+  "google/gemini-3.8-flash",
 ];
 export const DEFAULT_MODEL = "gpt-5.6-luna";
 
