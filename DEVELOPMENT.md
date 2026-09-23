@@ -176,6 +176,13 @@ of `suiteSeed`, tier, and index determines each maze; reusing the same seed and
 count therefore reproduces the same suite for another model. Increasing the
 count preserves the existing prefix in each tier and adds more mazes.
 
+For comparisons with the current public model runs, use the shared settings
+`--suite-seed emz-public-v0 --mazes-per-tier 3 --reasoning-effort low`. This
+reproduces the same nine fixtures (three per tier) used by the current public
+Grok, DeepSeek, and Luna runs. Keep the reasoning effort fixed as well as the
+suite: different effort levels are separate experiment conditions and are not
+eligible for episode reuse.
+
 Before calling a model, the runner checks `public/replay-data/runs/` for a
 completed published episode with the same suite seed, fixture hash, provider,
 requested model, reasoning effort, execution policy, and contract hashes. A
@@ -215,7 +222,19 @@ node --env-file=.env.local benchmark/run-batch.js \
 ```
 
 Use the same `--suite-seed` and `--mazes-per-tier` when comparing another
-model. Change the output directory so the batches remain separate.
+model, and keep `--reasoning-effort low` fixed for this comparison. Change the
+model ID and output directory so each batch remains separate. For example, the
+Gemini 3.8 Flash run is:
+
+```bash
+node --env-file=.env.local benchmark/run-batch.js \
+  --provider openrouter \
+  --model google/gemini-3.8-flash \
+  --reasoning-effort low \
+  --suite-seed emz-public-v0 \
+  --mazes-per-tier 3 \
+  --out results/emz-public-v0--google-gemini-3.8-flash--low--9
+```
 
 Other useful commands:
 

@@ -57,6 +57,17 @@ or hidden game state.
   playback, and export behavior compatible.
 - Do not deploy or commit unless the user asks.
 
+## Benchmark comparison defaults
+
+- For comparisons against the current public model runs, use suite seed
+  `emz-public-v0`, `--mazes-per-tier 3` (nine mazes total), and
+  `--reasoning-effort low`.
+- Keep those three settings identical across models and use a distinct
+  `--out` directory for each run. Changing suite seed, maze count, or reasoning
+  effort creates a different comparison condition.
+- Live runs require a clean Git worktree. Read `benchmark/AGENTS.md` and
+  `DEVELOPMENT.md` for the provider command and benchmark details.
+
 ## Validation
 
 Run checks in proportion to the change:
