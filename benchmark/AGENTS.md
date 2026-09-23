@@ -33,12 +33,42 @@ This module implements the headless Echo Maze Benchmark (EMZ Benchmark), themed 
 
 ## Commands
 
+### Comparable live model runs
+
+Use the current public comparison suite for model-to-model comparisons:
+
+- `--suite-seed emz-public-v0`
+- `--mazes-per-tier 3` (three easy, three medium, and three hard; nine total)
+- `--reasoning-effort low`
+
+Keep all three values fixed across models. Reasoning effort is part of the
+episode reuse identity, so changing it creates a separate experiment condition.
+Give each model a distinct `--out` directory. The seed and count reproduce the
+same fixtures used by the current public runs.
+
+For example, Gemini 3.8 Flash through OpenRouter:
+
+```bash
+node --env-file=.env.local benchmark/run-batch.js \
+  --provider openrouter \
+  --model google/gemini-3.8-flash \
+  --reasoning-effort low \
+  --suite-seed emz-public-v0 \
+  --mazes-per-tier 3 \
+  --out results/emz-public-v0--google-gemini-3.8-flash--low--9
+```
+
+For Grok 4.6, use `--model x-ai/grok-4.6` and a distinct output directory,
+such as `results/emz-public-v0--x-ai-grok-4.6--low--9`.
+
+### Other commands
+
 ```bash
 npm run benchmark:verify      # offline invariant checks
 npm run benchmark:dry-run     # defaults to 3 mazes per tier (9 total)
 OPENAI_API_KEY=... npm run benchmark:run            # live via OpenAI Responses API
 OPENROUTER_API_KEY=... npm run benchmark:run -- --provider openrouter --model <id>   # live via OpenRouter
-npm run benchmark:run -- --reasoning-effort medium # effort is recorded and never reused across levels
+npm run benchmark:run -- --reasoning-effort medium # explicitly runs a different effort condition
 npm run benchmark:summary -- results/<dir>          # regenerate summaries from artifacts
 npm run benchmark:run -- --dry-run --resume results/<dir> # resume a compatible dry-run batch
 ```
