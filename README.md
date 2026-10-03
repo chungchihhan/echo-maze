@@ -91,3 +91,7 @@ npm test
 
 For architecture, environment setup, benchmark commands, and deployment details,
 see [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+## License
+
+Echo Maze is available under the [MIT License](./LICENSE).

@@ -1,0 +1,80 @@
+.toast {
+  position: fixed;
+  z-index: 50;
+  right: 20px;
+  bottom: 20px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 20px;
+  align-items: start;
+  gap: 12px;
+  width: min(430px, calc(100vw - 32px));
+  padding: 16px;
+  color: #0033e5;
+  background: #f0f7ff;
+  border: 1px solid #527ceb;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgb(0 13 82 / 22%);
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  animation: toast-enter .35s ease-out both;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #ff5c35;
+  background: rgb(255 92 53 / 12%);
+  border-radius: 7px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.content { min-width: 0; }
+.content strong { display: block; font-size: 13px; font-weight: 600; line-height: 1.3; }
+.content p { margin: 4px 0 10px; color: #3b59a7; font-size: 12px; line-height: 1.4; white-space: nowrap; }
+.content a { display: inline-flex; align-items: center; gap: 6px; color: #0033e5; font-size: 12px; font-weight: 600; line-height: 1.3; text-decoration: underline; text-underline-offset: 3px; }
+.content a span { transition: transform .2s ease; }
+.content a:hover span { transform: translateX(2px); }
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: #527ceb;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.close:hover { color: #0033e5; }
+.close:focus-visible,
+.content a:focus-visible { outline: 2px solid #0033e5; outline-offset: 3px; }
+
+.closing { animation: toast-exit .2s ease-in both; }
+
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-exit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+@media (max-width: 680px) {
+  .toast { right: 16px; bottom: 16px; }
+}
+
+@media (max-width: 480px) {
+  .content p { white-space: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
