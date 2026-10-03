@@ -181,6 +181,7 @@ test("generated v0 suites are deterministic, stratified, unique, and BFS-verifie
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "deepseek/deepseek-v4-flash-0731",
     "z-ai/glm-5.3-flash",
+    "google/gemini-3.8-flash",
   ]);
 });
 

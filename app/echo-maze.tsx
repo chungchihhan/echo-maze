@@ -778,7 +778,12 @@ function IntroSection({ mode, showReplayLink = false }: { mode: PageMode; showRe
             {heroCopy.headline}
           </h1>
         )}
-        {showReplayLink ? <a className="hero-replay-link" href="/replay">Open replay workspace <span aria-hidden="true">↗</span></a> : null}
+        {showReplayLink ? (
+          <div className="hero-links">
+            <a className="hero-replay-link" href="/replay">Open replay workspace <span aria-hidden="true">↗</span></a>
+            <a className="hero-replay-link" href="/benchmark">Open benchmark <span aria-hidden="true">↗</span></a>
+          </div>
+        ) : null}
       </div>
       <div className="intro-panel intro-panel-blue">
         <HeroMaze mazes={HERO_MAZES} />

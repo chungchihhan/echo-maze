@@ -534,12 +534,13 @@ h1 em {
   49%, 100% { opacity: 0; }
 }
 
+.hero-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 32px; }
+
 .hero-replay-link {
   display: inline-flex;
   width: max-content;
   align-items: center;
   gap: 8px;
-  margin-top: 32px;
   color: var(--cobalt);
   font-size: var(--text-body-sm);
   text-decoration: underline;
@@ -2740,6 +2741,7 @@ h1 em {
 .benchmark-secondary-scores { display: grid; align-content: center; gap: 20px; }
 .benchmark-secondary-scores > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .benchmark-secondary-scores strong { font-size: 15px; font-weight: 400; }
+.benchmark-scoreboard:not(:has(.benchmark-column-toggle[open])) .benchmark-secondary-scores strong { font-size: 36px; letter-spacing: -.04em; }
 .benchmark-secondary-scores > .benchmark-extra-metric { display: none; }
 .benchmark-scoreboard:has(.benchmark-column-toggle[open]) .benchmark-secondary-scores {
   gap: 11px;
