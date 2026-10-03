@@ -50,6 +50,7 @@ export const MODEL_ALLOWLIST = [
   "deepseek/deepseek-v4-flash-0731",
   "z-ai/glm-5.3-flash",
   "google/gemini-3.8-flash",
+  "anthropic/claude-sonnet-5.5",
 ];
 export const DEFAULT_MODEL = "gpt-5.6-luna";
 

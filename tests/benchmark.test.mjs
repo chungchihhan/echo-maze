@@ -182,6 +182,7 @@ test("generated v0 suites are deterministic, stratified, unique, and BFS-verifie
     "deepseek/deepseek-v4-flash-0731",
     "z-ai/glm-5.3-flash",
     "google/gemini-3.8-flash",
+    "anthropic/claude-sonnet-5.5",
   ]);
 });
 
