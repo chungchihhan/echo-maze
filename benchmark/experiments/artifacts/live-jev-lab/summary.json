@@ -1,0 +1,18 @@
+{
+  "batchId": "live-jev-lab",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "seed": "ECHO-MAZE-DEMO",
+  "status": "won",
+  "turns": 51,
+  "successfulMoves": 51,
+  "wallHits": 0,
+  "visitedCells": 45,
+  "optimalPathLength": 37,
+  "finalRelative": {
+    "x": -3,
+    "y": -4
+  },
+  "createdAt": 1789737668949,
+  "finishedAt": 1789737672099
+}

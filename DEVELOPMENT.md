@@ -41,10 +41,12 @@ cp .env.example .env.local
 ```dotenv
 ENABLE_LIVE_API=false
 OPENAI_API_KEY=your_api_key_here
+TYPESAFE_AI_API_KEY=your_typesafe_api_key_here
 ```
 
 ChatGPT Plus and OpenAI API billing are separate. Never commit `.env.local` or
-an API key.
+an API key. For the TypeSafe Live Lab, open `/?lab=1` with `ENABLE_LIVE_API=true` and
+provide `TYPESAFE_AI_API_KEY` (or the alias `TYPESAFE_API_KEY`).
 
 Start the local application:
 
@@ -73,10 +75,13 @@ npm run db:generate  # Generate Drizzle migrations after schema changes
 - `lib/ai/vercel-client.js` is the shared single-attempt Vercel AI SDK boundary
   for OpenAI and OpenRouter. SDK retries are disabled so each caller can own
   its retry policy and diagnostics.
+- `lib/ai/typesafe-client.js` is the TypeSafe System One (Jev) Choice client used
+  by the Live Lab provider path.
 - `lib/ai/walker-decision.js` owns the shared Walker prompt and structured
   decision schema.
-- `app/api/agent/route.ts` calls the shared AI client and returns the next
-  structured decision.
+- `app/api/agent/route.ts` calls the OpenAI or TypeSafe client and returns the
+  next structured decision.
+- `app/page.tsx?lab=1` mounts the retained Live Lab UI for live agent runs.
 - `app/api/replays/route.ts` creates, updates, lists, and exports replay data.
 - `db/schema.ts` defines the D1 replay tables.
 - `db/index.ts` exposes the Drizzle D1 client.

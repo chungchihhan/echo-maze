@@ -114,9 +114,18 @@ test("server-renders the complete replay workspace", async () => {
   assert.doesNotMatch(html, /class="footer-note"/);
 });
 
-test("does not expose a live Lab route", async () => {
+test("does not expose a dedicated Live Lab route by default", async () => {
   const response = await render("/lab");
   assert.equal(response.status, 404);
+});
+
+test("opt-in Live Lab mounts from the homepage lab query param", async () => {
+  const response = await render("/?lab=1");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(text, /LIVE LAB/i);
+  assert.match(text, /Ask Walker|Auto-run|TypeSafe Jev/i);
 });
 
 test("server-renders the published Replay Library destination", async () => {
@@ -187,7 +196,7 @@ test("published benchmark index is valid and its runs are replayable", async () 
 });
 
 test("the Solo Walker shell shares one pure maze core with the benchmark", async () => {
-  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, heroMaze, styles, demoSource, demoDataSource, route, replayRoute, schema, wranglerSource, layout, packageJson, mazeCore, aiClient, decisionContract] = await Promise.all([
+  const [page, shared, replayPage, replayUi, mazeSight, mazeStructure, heroMaze, styles, demoSource, demoDataSource, route, replayRoute, schema, wranglerSource, layout, packageJson, mazeCore, aiClient, decisionContract, typeSafeClient] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/echo-maze.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/replay/page.tsx", import.meta.url), "utf8"),
@@ -207,10 +216,13 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
     readFile(new URL("../lib/maze/index.js", import.meta.url), "utf8"),
     readFile(new URL("../lib/ai/vercel-client.js", import.meta.url), "utf8"),
     readFile(new URL("../lib/ai/walker-decision.js", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai/typesafe-client.js", import.meta.url), "utf8"),
   ]);
 
   // The public home mounts the featured replay; the full replay presentation has its own route.
   assert.match(page, /LandingPage/);
+  assert.match(page, /LiveLab/);
+  assert.match(page, /\?lab=1|lab === "1"|isLiveLabEnabled/);
   assert.match(replayPage, /ReplayHome/);
   assert.match(demoSource, /live-luna-r3/);
   assert.match(demoSource, /echo-maze-bench-v0-02/);
@@ -272,11 +284,14 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.doesNotMatch(mazeSight, /rayVisibility|import\("vgpu"\)|bounceRadiance/);
   assert.doesNotMatch(replayUi, /requestAgent|recordReplay|Export replay|Auto-run/);
 
-  // The agent route is Solo-Walker-only through the shared SDK boundary.
+  // The agent route is Solo-Walker-only through the shared SDK / TypeSafe boundary.
   assert.equal(mazeCore.includes("react"), false);
   assert.equal(mazeCore.includes("cloudflare"), false);
   assert.equal(mazeCore.includes("openai"), false);
-  assert.match(route, /const MODEL = "gpt-5\.6-luna"/);
+  assert.match(route, /const OPENAI_MODEL = "gpt-5\.6-luna"/);
+  assert.match(route, /const TYPESAFE_MODEL = "jev-latest"/);
+  assert.match(route, /provider === "typesafe"/);
+  assert.match(route, /createTypeSafeClient/);
   assert.match(decisionContract, /You are the Walker inside Echo Maze\./);
   assert.match(route, /role !== "solo_walker"/);
   assert.doesNotMatch(route, /role: "navigator"|role: "walker"|routeBetween|deterministic route tool/);
@@ -289,6 +304,8 @@ test("the Solo Walker shell shares one pure maze core with the benchmark", async
   assert.match(aiClient, /\.responses\(config\.model\)/);
   assert.match(aiClient, /\.chat\(config\.model\)/);
   assert.match(aiClient, /maxRetries: 0/);
+  assert.match(typeSafeClient, /api\.typesafe\.ai\/v1\/systemone/);
+  assert.match(page, /isLiveLabEnabled|lab === "1"/);
 
   // Persistence, hosting, and runtime boundaries remain compatible.
   assert.match(replayRoute, /CREATE TABLE IF NOT EXISTS replay_runs/);
